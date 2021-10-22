@@ -1,6 +1,3 @@
-# BiFPN module is took from https://github.com/toandaominh1997/EfficientDet.Pytorch
-# Detail please refer https://arxiv.org/abs/1911.09070
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

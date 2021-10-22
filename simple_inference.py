@@ -60,13 +60,6 @@ def display_on_frame(result, frame, mask_alpha=0.5, fps_str='', no_mask=False, n
     pred_boxes = result["pred_boxes"]
     pred_classes = result["pred_classes"]
     num_dets = pred_scores.size()[0]
-    
-    '''
-    mask_candidate = result["mask_candidate"]
-    for i, candidate in enumerate(mask_candidate):
-        candidate = ((candidate - candidate.min()) / (candidate.max() - candidate.min())* 255).byte().cpu().numpy()
-        cv2.imwrite("{}.png".format(i), candidate)
-    '''
 
     def get_color(j, on_gpu=None):
         global color_cache
@@ -293,7 +286,6 @@ def ibims1_pd(net: PlaneRecNet, in_folder: str, out_folder: str):
                 mask = pred_masks[idx].bool()
                 point_cloud_seg = point_cloud[mask, :].squeeze(dim=0)
                 center, normal = PCA_svd(point_cloud_seg)
-                #center, normal = fit_plane_LSE_RANSAC(point_cloud_seg, iters=400)
                 plane_depths.append(torch.dot(center, normal) / torch.matmul(normal, k_inv_dot_xy1))
             
 

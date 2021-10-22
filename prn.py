@@ -71,18 +71,6 @@ class PlaneRecNet(nn.Module):
         self.mask_head = SOLOv2MaskHead(cfg, mask_shapes)
     
     def forward(self, x):
-        """
-        Args:
-            x: Tensor, batched_image in (N, C, H, W) format.
-        Returns:
-            When training the network:
-            - mask_pred: 
-            - cate_pred: 
-            - kernel_pred: 
-            - depth_pred:
-            When inferencing:
-            - results: {}
-        """
 
         # Backbone
         with timer.env("backbone"):
@@ -226,8 +214,6 @@ class PlaneRecNet(nn.Module):
 
         # mask.
         seg_masks = seg_preds > self.mask_threshold
-        #mask_candidate = F.interpolate(seg_preds.unsqueeze(0), size=ori_size, mode='bilinear').squeeze(0)
-        #result['mask_candidate'] = mask_candidate
         sum_masks = seg_masks.sum((1, 2)).float()
 
         # filter.
@@ -315,10 +301,8 @@ class SOLOv2InsHead(nn.Module):
         self.num_grids = cfg.solov2.num_grids
         self.instance_in_features = cfg.solov2.instance_in_features 
         self.instance_strides = cfg.solov2.fpn_instance_strides 
-        self.instance_in_channels = cfg.fpn.num_features  # = fpn.
+        self.instance_in_channels = cfg.fpn.num_features
         self.instance_channels = cfg.solov2.instance_channels 
-        # Convolutions to use in the towers
-        #self.type_dcn = cfg.solov2.TYPE_DCN # 'DCN'
         self.num_levels = len(self.instance_in_features) 
         assert self.num_levels == len(self.instance_strides), \
             print("Strides should match the features.")

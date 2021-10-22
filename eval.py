@@ -59,8 +59,6 @@ def parse_args(argv=None):
     global args
     args = parser.parse_args(argv)
 
-
-semantic_metrics = ["RI", " VOI" , "SC"]
 depth_metrics = ["abs_rel", "sq_rel", "rmse", "log10", "a1", "a2", "a3", "ratio"]
 iou_thresholds = [x / 100 for x in range(50, 100, 5)]
 
@@ -163,37 +161,6 @@ def tensorborad_visual_log(net: PlaneRecNet, dataset, writer: SummaryWriter, ite
 
     except KeyboardInterrupt:
         print('Stopping...')
-
-def compute_plane_loss(pred_depth, gt_masks, gt_planes, k_matrix):
-    h, w = pred_depth.shape[-2:]
-    cx = k_matrix[0][2]
-    cy = k_matrix[1][2]
-    fx = k_matrix[0][0]
-    fy = k_matrix[1][1]
-
-    v, u = torch.meshgrid(torch.arange(h), torch.arange(w))
-    Z_p = pred_depth.squeeze(dim=0)
-    X_p = (u - cx) * Z_p / fx
-    Y_p = (v - cy) * Z_p / fy
-
-    plane_error = 0
-    for i in range(gt_masks.shape[0]):
-        instance_mask = gt_masks[i].unsqueeze(dim=0).bool()
-        x_seg = X_p[instance_mask].unsqueeze(dim=0)
-        y_seg = Y_p[instance_mask].unsqueeze(dim=0)
-        z_seg = Z_p[instance_mask].unsqueeze(dim=0)
-        point_cloud_seg = torch.cat((x_seg, y_seg, z_seg), dim=0).permute(1,0)
-        center = gt_planes[i][:3]
-        normal = gt_planes[i][3:]
-        dists_to_plane = torch.abs(torch.matmul((point_cloud_seg - center) , normal.unsqueeze(dim=1))) / torch.norm(point_cloud_seg)
-        fit_variance = torch.var(dists_to_plane)
-        #dists_to_plane = dists_to_plane.clamp(max=(dists_to_plane.mean() - 2*fit_variance))
-        #print('var: ', fit_variance, ', max: ', dists_to_plane.max(), ', mean: ', dists_to_plane.mean())
-        #big = dists_to_plane.max()
-        #print(torch.sum(dists_to_plane > big*0.1)/ instance_mask.sum())
-        plane_error += dists_to_plane.mean()
-    
-    return plane_error
 
 
 def compute_depth_metrics(pred_depth, gt_depth, median_scaling=True):

@@ -149,14 +149,6 @@ class PlaneRecNetLoss(nn.Module):
         
         # Plane Surface Normal Constraint Depth Estimation Loss
         if cfg.use_plane_loss:
-            '''
-            #loss_plane = []
-            intrinsic_matrix = torch.stack([gt_instances[img_idx]['k_matrix'] for img_idx in range(len(gt_instances))], dim=0)
-            fx = intrinsic_matrix[:,0,0].view(-1, 1,1,1)
-            fy = intrinsic_matrix[:,1,1].view(-1, 1,1,1)
-            loss_plane = self.vnl(gt_depths, depth_preds, fx, fy, select=True)
-            losses['pln'] = loss_plane * self.pln_loss_weight
-            '''
             loss_plane = []
             B = len(gt_instances)
             intrinsic_matrix = torch.stack([gt_instances[img_idx]['k_matrix'] for img_idx in range(len(gt_instances))], dim=0)
