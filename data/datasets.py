@@ -4,7 +4,6 @@ import sys
 import torch
 import torch.utils.data as data
 import torch.nn.functional as F
-import torchvision.transforms as transforms
 import cv2
 import numpy as np
 from data.config import cfg, set_dataset

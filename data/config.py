@@ -136,8 +136,8 @@ nyu_eval = dataset_base.copy({
     'name': 'NYUDataset',
 
     # Validation images and annotations.
-    'valid_images': '/netscratch/xie/nyu/nyu_images/',
-    'valid_info': '/netscratch/xie/nyu/nyu_eval.json',
+    'valid_images': '/nyu/nyu_images/',
+    'valid_info': '/nyu/nyu_eval.json',
     # Resize scale factor
     'scale_factor': 1,
     'min_depth': 1/1000,
