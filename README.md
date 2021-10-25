@@ -8,7 +8,7 @@ This is an official implementation for PlaneRecNet: A multi-task convolutional n
 ## Install environment:
 - Clone this repository and enter it:
 ```Shell
-git clone git@pc-4501.kl.dfki.de:xie/PlaneRecNet.git
+git clone https://github.com/EryiXie/PlaneRecNet.git
 cd PlaneRecNet
 ```
 
