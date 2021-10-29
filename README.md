@@ -27,7 +27,7 @@ All models below are trained with batch_size=8 and a single RTX3090 or a single 
 
 |  Image Size  | Backbone|  FPS  |  Weights |
 | ------ | --------------- | --- |  - |
-|480x640   | Resnet50-DCN | - | [*coming soon*]
+|480x640   | Resnet50-DCN | - | [PlaneRecNet_50](https://drive.google.com/file/d/1DdT6eEd7Ba-eUshs1PtPpn7WUtLeTyd9/view?usp=sharing)
 |480x640 |   Resnet101-DCN    | 14.4 | [PlaneRecNet_101](https://drive.google.com/file/d/1rDnYjBGD-yMO4dzuwtTCs2s53QkEpa9l/view?usp=sharing)|
 
 
