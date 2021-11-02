@@ -17,7 +17,7 @@ import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from tensorboardX import SummaryWriter
 
-from prn import PlaneRecNet
+from planerecnet import PlaneRecNet
 from models.functions.funcs import bbox_iou, mask_iou
 from data.datasets import PlaneAnnoDataset, detection_collate, ScanNetDataset, NYUDataset
 from data.config import set_cfg, set_dataset, cfg, MEANS

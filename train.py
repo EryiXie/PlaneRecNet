@@ -12,7 +12,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from tensorboardX import SummaryWriter
 
-from prn import PlaneRecNet
+from planerecnet import PlaneRecNet
 from data.config import cfg, MEANS, set_cfg, set_dataset
 from data.datasets import PlaneAnnoDataset, S2D3DSDataset, ScanNetDataset, detection_collate, enforce_size
 from data.augmentations import SSDAugmentation, BaseTransform

@@ -10,7 +10,7 @@ from pathlib import Path
 from numpy.core.numeric import NaN, zeros_like
 import torch
 from torch._C import dtype
-from prn import PlaneRecNet
+from planerecnet import PlaneRecNet
 from data.augmentations import FastBaseTransform
 from data.config import set_cfg, cfg, COLORS
 from utils import timer
