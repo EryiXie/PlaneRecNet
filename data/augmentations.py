@@ -4,6 +4,7 @@
     Licensed under The MIT License [see LICENSE for details]
 """
 import torch
+import torch.nn.functional as F
 import cv2
 import numpy as np
 from numpy import random
@@ -513,9 +514,6 @@ class FastBaseTransform(torch.nn.Module):
         # img assumed to be a pytorch BGR image with channel order [n, h, w, c]
         img = img.permute(0, 3, 1, 2).contiguous()
 
-        #img_size = (cfg.max_size, cfg.max_size)
-        #img = F.interpolate(img, img_size, mode='bilinear', align_corners=False)
-
         if self.transform.normalize:
             img = (img - self.mean) / self.std
         elif self.transform.subtract_means:
@@ -530,5 +528,3 @@ class FastBaseTransform(torch.nn.Module):
 
         # Return value is in channel order [n, c, h, w] and RGB
         return img
-
-

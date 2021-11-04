@@ -7,15 +7,15 @@ import argparse
 import cv2
 import os
 from pathlib import Path
-from numpy.core.numeric import NaN, zeros_like
+from numpy.core.numeric import NaN
 import torch
-from torch._C import dtype
+from torch.nn.functional import interpolate
 from planerecnet import PlaneRecNet
 from data.augmentations import FastBaseTransform
 from data.config import set_cfg, cfg, COLORS
 from utils import timer
-from models.functions.funcs import mask_iou, bbox_iou, PCA_svd
-from utils.utils import MovingAverage
+from models.functions.funcs import PCA_svd
+from models.functions.funcs import calc_size_preserve_ar
 from collections import defaultdict
 import numpy as np
 import scipy.io
@@ -142,21 +142,26 @@ def display_on_frame(result, frame, mask_alpha=0.5, fps_str='', no_mask=False, n
 
 def inference_image(net: PlaneRecNet, path: str, save_path: str = None, depth_mode: str='colored'):
     frame_np = cv2.imread(path)
+    H, W, _ = frame_np.shape
     if frame_np is None:
         return
+    frame_np = cv2.resize(frame_np, calc_size_preserve_ar(W, H, cfg.max_size), interpolation=cv2.INTER_LINEAR)
+    
     frame = torch.from_numpy(frame_np).cuda().float()
-    batch = FastBaseTransform()(frame.unsqueeze(0)) # TODO: Check FastBaseTransform
+    batch = FastBaseTransform()(frame.unsqueeze(0))
     results = net(batch)
 
-    frame_numpy, depth = display_on_frame(results[0], frame, no_mask=args.no_mask, no_box=args.no_box, no_text=args.no_text)
+    blended_frame, depth = display_on_frame(results[0], frame, no_mask=args.no_mask, no_box=args.no_box, no_text=args.no_text)
 
     if save_path is None:
         name, ext = os.path.splitext(path)
         save_path = name + '_seg' + ext
-        print(save_path)
+        depth_path = name + '_dep.png'
     else:
         name, ext = os.path.splitext(save_path)
-    cv2.imwrite(save_path, frame_numpy)
+        depth_path = name + '_dep.png'
+        
+    cv2.imwrite(save_path, blended_frame)
 
     if depth_mode == 'colored':
         vmin = np.percentile(depth, 1)
@@ -164,12 +169,10 @@ def inference_image(net: PlaneRecNet, path: str, save_path: str = None, depth_mo
         depth = depth.clip(min=vmin, max=vmax)
         depth = ((depth - depth.min()) / (depth.max() - depth.min()) * 255).astype(np.uint8)
         depth_color = cv2.applyColorMap(depth, cv2.COLORMAP_VIRIDIS)
-        name, ext = os.path.splitext(save_path)
-        depth_path = os.path.join(name+"_dep"+ ext)
-        cv2.imwrite(depth_path.replace(".jpg",".png"), depth_color)
+        cv2.imwrite(depth_path, depth_color)
     elif depth_mode == 'gray':
         depth = (depth*args.depth_shift).astype(np.uint16)
-        cv2.imwrite(save_path.replace(".jpg",".png"), depth)
+        cv2.imwrite(depth_path, depth)
     
    
 def inference_images(net: PlaneRecNet, in_folder: str, out_folder: str, max_img: int=0, depth_mode: str='colored'):
@@ -186,7 +189,7 @@ def inference_images(net: PlaneRecNet, in_folder: str, out_folder: str, max_img:
             continue
         out_path = os.path.join(out_folder, name+ext)
         inference_image(net, img_path, out_path, depth_mode=depth_mode)
-        print(os.path.basename(img_path) + ' -> ' + os.path.basename(out_path),  end='\r')
+        print("Inference images: " + os.path.basename(img_path) + ' -> ' + os.path.basename(out_path),  end='\r')
         index = index + 1
         if index >= max_img:
             break
@@ -347,13 +350,15 @@ if __name__ == "__main__":
     if args.image is not None:
         if ':' in args.image:
             inp, out = args.image.split(':')
-            inference_image(net, inp, out)
+            print('Inference image: {}'.format(inp))
+            inference_image(net, inp, out, depth_mode=args.depth_mode)
         else:
-            inference_image(net, args.image)
+            print('Inference image: {}'.format(args.image))
+            inference_image(net, args.image, depth_mode=args.depth_mode)
     
     if args.images is not None:
         inp, out = args.images.split(':')
-        inference_images(net, inp, out, args.max_img, args.depth_mode)
+        inference_images(net, inp, out, max_img=args.max_img, depth_mode=args.depth_mode)
     if args.ibims1 is not None:
         inp, out = args.ibims1.split(':')
         ibims1(net, inp, out)

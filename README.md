@@ -4,7 +4,8 @@ This is an official implementation for PlaneRecNet: A multi-task convolutional n
 ## Changing Logs
 22th. Oct. 2021: Initial update, some trained models and data annotation will be uploaded very soon.
 29th. Oct. 2021: Upload ResNet-50 based model.
-
+3rd. Nov. 2021: Nice to know that "prn" or "PRN" is a forbiden name in Windows.
+4th. Nov. 2021: For inference, input image will be resized to max(H, W) == cfg.max_size, and reserve the aspect ratio. Update enviroment.yml, so that newest GPU can run it as well.
 # Installation
 ## Install environment:
 - Clone this repository and enter it:

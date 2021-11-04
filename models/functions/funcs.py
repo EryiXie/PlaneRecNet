@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import cv2
+from math import sqrt
 import numpy as np
 
 @torch.jit.script
@@ -190,6 +191,15 @@ def imrescale(img, scale, return_scale=False, interpolation='bilinear'):
         return rescaled_img, scale_factor
     else:
         return rescaled_img
+
+def calc_size_preserve_ar(img_w, img_h, max_size):
+    if img_w > img_h:
+        w = max_size
+        h = img_h / img_w * max_size
+    else:
+        h = max_size
+        w = img_w / img_h * max_size
+    return (int(w), int(h))
 
 def center_of_mass(bitmasks):
     _, h, w = bitmasks.size()
