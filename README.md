@@ -61,6 +61,8 @@ Then you will get segmentation and depth estimation results like these:
 # Training
 PlaneRecNet is trained on ScanNet with 100k samples on one single RTX 3090 with batch_size=8, it takes approximate **37 hours**. Here are the [data annotations](https://drive.google.com/file/d/17mjtZTSV2w7XoVtDYex6RmDK29hRpwg8/view?usp=sharing)(about 1.0 GB) for training of ScanNet datasets, which is based on the annotation given by [PlaneRCNN](https://github.com/NVlabs/planercnn) and converted into json file. *Please not that, our training sample is not same as PlaneRCNN, because we don't have their training split at hand.*
 
+**Please notice, the pathing and naming rules in our data/dataset.py, is not compatable with the raw data extracted with the ScanNetv2 original code. Please refer to [this issue](https://github.com/EryiXie/PlaneRecNet/issues/2) for fixing tips, thanks [uyoung-jeong](https://github.com/uyoung-jeong) for that.** I will add the data preprocessing script to fix this, once I have time.
+
 Of course, please download [ScanNet](http://www.scan-net.org/) too for rgb image, depth image and camera intrinsic etc.. The annotation file we provide only contains paths for images and camera intrinsic and the ground truth of piece-wise plane instance and its plane parameters.
 
 - To train, grab an imagenet-pretrained model and put it in `./weights`.
