@@ -201,6 +201,15 @@ def calc_size_preserve_ar(img_w, img_h, max_size):
         w = img_w / img_h * max_size
     return (int(w), int(h))
 
+def pad_even_divided(img, divisor=32):
+    h, w, c = img.shape
+    ext_h = divisor - h%divisor if h%divisor!=0 else 0 
+    ext_w = divisor - w%divisor if w%divisor!=0 else 0 
+    padded_img = np.zeros((h+ext_h, w+ext_w, c))
+    padded_img[0:h, 0:w, :] = img
+    return padded_img
+
+
 def center_of_mass(bitmasks):
     _, h, w = bitmasks.size()
 

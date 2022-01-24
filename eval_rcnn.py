@@ -6,6 +6,7 @@
 import argparse
 import random
 import os
+import time
 from collections import OrderedDict
 import cv2
 import numpy as np
@@ -19,7 +20,7 @@ from tensorboardX import SummaryWriter
 
 from planerecnet import PlaneRecNet
 from models.functions.funcs import bbox_iou, mask_iou
-from data.datasets import PlaneAnnoDataset, detection_collate, ScanNetDataset, NYUDataset
+from data.datasets import PlaneAnnoDataset, detection_collate, ScanNetDataset
 from data.config import set_cfg, set_dataset, cfg, MEANS
 from data.augmentations import BaseTransform
 from utils.utils import MovingAverage, ProgressBar, SavePath
@@ -33,13 +34,6 @@ def parse_args(argv=None):
     parser.add_argument('--trained_model',
                         default=None, type=str,
                         help='Trained state_dict file path to open. If "interrupt", this will open the interrupt file.')
-    parser.add_argument('--top_k', default=15, type=int,
-                        help='Further restrict the number of predictions to parse')
-    parser.add_argument('--mask_nms', dest='mask_nms', action='store_false',
-                        help='If set, PlaneRecNet use mask nms instead of matrix nms.')
-    parser.add_argument('--score_threshold', default=0.3, type=float, 
-                        help='Detections with a score under this threshold will not be considered.')
-    parser.add_argument("--nms_mode", default="matrix", type=str, choices=["matrix", "mask"], help='Chose NMS type from matrix and mask nms.')
     parser.add_argument('--output_coco_json', dest='output_coco_json', action='store_true',
                         help='If display is not set, instead of processing IoU values, this just dumps detections into the coco json file.')
     parser.add_argument('--bbox_det_file', default='results/bbox_detections.json', type=str,
@@ -48,22 +42,19 @@ def parse_args(argv=None):
                         help='The output file for coco mask results if --coco_results is set.')
     parser.add_argument('--max_images', default=-1, type=int,
                         help='The maximum number of images from the dataset to consider. Use -1 for all.')
-    parser.add_argument('--config', default=None,
-                        help='The config object to use.')
     parser.add_argument('--no_bar', dest='no_bar', action='store_true',
-                        help='Do not output the status bar. This is useful for when piping to a file.')
-    parser.add_argument('--autopsy', dest='autopsy', action='store_true',
                         help='Do not output the status bar. This is useful for when piping to a file.')
     parser.add_argument('--dataset', default=None, type=str,
                         help='If specified, override the dataset specified in the config with this one (example: coco2017_dataset).')
     global args
     args = parser.parse_args(argv)
 
+
+semantic_metrics = ["RI", " VOI" , "SC"]
 depth_metrics = ["abs_rel", "sq_rel", "rmse", "log10", "a1", "a2", "a3", "ratio"]
 iou_thresholds = [x / 100 for x in range(50, 100, 5)]
 
-def evaluate(net: PlaneRecNet, dataset, during_training=False, eval_nums=-1):
-    frame_times = MovingAverage()
+def evaluate(dataset, during_training=False, eval_nums=-1):
     eval_nums = len(dataset) - 1 if eval_nums < 0 else min(eval_nums, len(dataset))
     progress_bar = ProgressBar(30, eval_nums)
 
@@ -79,85 +70,67 @@ def evaluate(net: PlaneRecNet, dataset, during_training=False, eval_nums=-1):
         'mask': [APDataObject() for _ in iou_thresholds]
     }
 
+    ROOT = "/home/xie/Documents/train_history/vis_results/scannet/planeae"
+
     try:
         # Main eval loop
         for it, image_idx in enumerate(dataset_indices):
-            timer.reset()
 
             image, gt_instances, gt_depth = dataset.pull_item(image_idx)
-            batch = Variable(image.unsqueeze(0)).cuda()
+            img_id = dataset.ids[image_idx]
+            file_name_raw = dataset.coco.loadImgs(img_id)[0]['file_name']
+            file_name = file_name_raw.split('/')[0] + "_" + file_name_raw.split('/')[-1]
+            depth_path = os.path.join(ROOT, "dep" ,file_name.replace('.jpg', '.png'))
+            seg_path = os.path.join(ROOT, "seg" ,file_name.replace('.jpg', '.npy'))
+            #print(file_name, file_name_raw, depth_path, seg_path)
+            pred_depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED).astype(np.float) / 512
+            pred_depth = torch.from_numpy(pred_depth).unsqueeze(dim=0).cuda()
 
-            batched_result = net(batch) # if batch_size = 1, result = batched_result[0]
-            result = batched_result[0]
-
-            # TODO: this dict looping is not a good practice, python < 3.6 doesn't keep keys/values in same order as declared.
+            pred_masks = torch.from_numpy(np.load(seg_path)).cuda()
+            pred_boxes = torch.zeros(pred_masks.size(0), 4).cuda()
+            for i in range(pred_masks.size(0)):
+                    mask = pred_masks[i].squeeze()
+                    ys, xs = torch.where(mask)
+                    #print(ys.shape, xs.shape)
+                    if ys.shape == torch.Size([0]) or xs.shape == torch.Size([0]):
+                        pred_boxes[i] = torch.tensor([0, 0, 0, 0]).float()
+                    else:
+                        pred_boxes[i] = torch.tensor([xs.min(), ys.min(), xs.max(), ys.max()]).float()
+            pred_classes = torch.zeros(pred_masks.shape[0]).cuda()
+            scr_path = os.path.join(ROOT, "seg" ,file_name.replace('.jpg', '_score.npy'))
+            #pred_scores = torch.from_numpy(np.load(scr_path)).cuda()
+            pred_scores = torch.ones_like(pred_classes).cuda() * 0.8 + torch.rand_like(pred_classes).cuda()*0.2
+            #pred_scores = torch.rand_like(pred_classes).cuda()
             gt_masks, gt_boxes, gt_classes, gt_planes, k_matrices = [v.cuda() for k, v in gt_instances.items()]
-            pred_masks, pred_boxes, pred_classes, pred_scores, pred_depth = [v for k, v in result.items()]
+
 
             gt_depth = gt_depth.cuda()
             depth_error_per_frame = compute_depth_metrics(pred_depth, gt_depth, median_scaling=True)
             infos.append(depth_error_per_frame)
 
-            if pred_masks is not None:
+            if pred_masks is not None:   
                 pred_masks = pred_masks.float()
                 gt_masks = gt_masks.float()
                 compute_segmentation_metrics(ap_data, gt_masks, gt_boxes, gt_classes, pred_masks, pred_boxes, pred_classes, pred_scores)
             
-            # First couple of images take longer because we're constructing the graph.
-            # Since that's technically initialization, don't include those in the FPS calculations.
-            if it > 1:
-                frame_times.add(timer.total_time())
 
             if not args.no_bar:
-                if it > 1:
-                    fps = 1000 / frame_times.get_avg()
-                else:
-                    fps = 0
                 progress = (it+1) / eval_nums * 100
                 progress_bar.set_val(it+1)
-                print('\rProcessing Images  %s %6d / %6d (%5.2f%%)    %5.2f fps        '
-                      % (repr(progress_bar), it+1, eval_nums, progress, fps), end='')
+                print('\rProcessing Images  %s %6d / %6d (%5.2f%%) '
+                      % (repr(progress_bar), it+1, eval_nums, progress), end='')
+        
         calc_map(ap_data)
         infos = np.asarray(infos, dtype=np.double)
         infos = infos.sum(axis=0)/infos.shape[0]
-        print()
         print("Depth Metrics:")
         print("{}: {:.5f}, {}: {:.5f}, {}: {:.5f}, {}: {:.5f}, {}: {:.5f}, {}: {:.5f}, {}: {:.5f} \n{}: {:.5f}".format(
             depth_metrics[0], infos[0], depth_metrics[1], infos[1], depth_metrics[2], infos[2],
             depth_metrics[3], infos[3], depth_metrics[4], infos[4], depth_metrics[5], infos[5],
             depth_metrics[6], infos[6], depth_metrics[7], infos[7]
         ))
-
-    except KeyboardInterrupt:
-        print('Stopping...')
-
-def tensorborad_visual_log(net: PlaneRecNet, dataset, writer: SummaryWriter, iteration, eval_nums):
-    dataset_indices = list(range(len(dataset)))
-    random.shuffle(dataset_indices)
-    dataset_indices = dataset_indices[:eval_nums]
-
-    try:
-        # Main eval loop
-        for it, image_idx in enumerate(dataset_indices):
-            image, _, _ = dataset.pull_item(image_idx)
-            frame_ori = dataset.pull_image(image_idx)
-            frame_tensor = torch.from_numpy(frame_ori).cuda().float()
-            batch = Variable(image.unsqueeze(0)).cuda()
-
-            batched_result = net(batch) # if batch_size = 1, result = batched_result[0]
-            seg_on_frame_numpy, pred_depth = display_on_frame(batched_result[0], frame_tensor, mask_alpha=0.35)
-
-            pred_depth = pred_depth[20:460,20:620]
-            vmin = np.percentile(pred_depth, 1)
-            vmax = np.percentile(pred_depth, 99)
-            pred_depth = pred_depth.clip(min=vmin, max=vmax)
-            pred_depth = ((pred_depth - pred_depth.min()) / (pred_depth.max() - pred_depth.min()) * 255).astype(np.uint8)
-            pred_depth_color = cv2.applyColorMap(pred_depth, cv2.COLORMAP_VIRIDIS)
-
-            pred_depth_color = cv2.cvtColor(pred_depth_color, cv2.COLOR_BGR2RGB)
-            seg_on_frame_numpy = cv2.cvtColor(seg_on_frame_numpy, cv2.COLOR_BGR2RGB)
-            writer.add_image("depth/pred/{}".format(it), pred_depth_color, iteration, dataformats='HWC')
-            writer.add_image("seg/pred/{}".format(it), seg_on_frame_numpy, iteration, dataformats='HWC')
+        
+            
 
     except KeyboardInterrupt:
         print('Stopping...')
@@ -176,19 +149,19 @@ def compute_depth_metrics(pred_depth, gt_depth, median_scaling=True):
     _, H, W = gt_depth.shape
     pred_depth_flat = pred_depth.squeeze().view(-1, H*W)
     gt_depth_flat = gt_depth.squeeze().view(-1, H*W)
+    #print(gt_depth_flat.min(), gt_depth_flat.max())
     valid_mask = (gt_depth_flat > 0.5).logical_and(pred_depth_flat > 0.5)
     pred_depths_flat = pred_depth_flat[valid_mask]
     gt_depths_flat = gt_depth_flat[valid_mask]
 
     if median_scaling:
-        # just to calculate the ratio, we don'r really use median scaling to align pred and gt.
-        ratio = torch.median(gt_depth) / torch.median(pred_depths_flat)
-        #pred_depths_flat *= ratio
+        ratio = torch.median(gt_depth) / torch.median(pred_depth)
+        pred_depth *= ratio
     else:
         ratio = 0
 
-    pred_depths_flat[pred_depths_flat < cfg.dataset.min_depth] = cfg.dataset.min_depth
-    pred_depths_flat[pred_depths_flat > cfg.dataset.max_depth] = cfg.dataset.max_depth
+    pred_depth[pred_depth < cfg.dataset.min_depth] = cfg.dataset.min_depth
+    pred_depth[pred_depth > cfg.dataset.max_depth] = cfg.dataset.max_depth
 
     thresh = torch.max((gt_depths_flat / pred_depths_flat), (pred_depths_flat / gt_depths_flat))
     a1 = (thresh < 1.25     ).type(torch.cuda.DoubleTensor).mean()
@@ -213,10 +186,26 @@ def compute_segmentation_metrics(ap_data, gt_masks, gt_boxes, gt_classes, pred_m
     num_pred = len(pred_classes)
     num_gt   = len(gt_classes)
 
+    indices = sorted(range(num_pred), key=lambda i: -pred_masks[i].sum())
+    pred_masks = pred_masks[indices]
+    pred_boxes = pred_boxes[indices]
+    pred_classes = pred_classes[indices]
+    pred_scores = pred_scores[indices]
+
+    idxx = sorted(range(gt_masks.shape[0]), key=lambda i: -gt_masks[i].sum())
+    gt_masks = gt_masks[idxx]
+    gt_boxes = gt_boxes[idxx]
+    gt_classes = gt_classes[idxx]
+
+
+
+    # TODO: Take a look at the float and cpu flages
     mask_iou_cache = mask_iou(pred_masks, gt_masks).cpu()
     bbox_iou_cache = bbox_iou(pred_boxes.float(), gt_boxes.float()).cpu()
 
-    indices = sorted(range(num_pred), key=lambda i: -pred_scores[i])
+    #indices = sorted(range(num_pred), key=lambda i: -pred_scores[i])
+    indices = sorted(range(num_pred), key=lambda i: -pred_masks[i].sum())
+
 
     iou_types = [
         ('box', lambda i, j: bbox_iou_cache[i, j].item(),
@@ -226,11 +215,7 @@ def compute_segmentation_metrics(ap_data, gt_masks, gt_boxes, gt_classes, pred_m
     ]
 
     ap_per_iou = []
-
-    # THAT THE LINE THAT COMPELETELY WRONG, which used to be: num_gt_for_class = 1
-    # num_gt_for_class is not "numbers of classes in gt", it is NUMBERS OF GT INSTANCES OF ONE SINGLE CLASS IN ONE INPUT IMAGE!
-    num_gt_for_class = sum([1 for x in gt_classes if x == 0]) 
-    
+    num_gt_for_class = sum([1 for x in gt_classes if x == 0])
     for iouIdx in range(len(iou_thresholds)):
         iou_threshold = iou_thresholds[iouIdx]
         for iou_type, iou_func, score_func, indices in iou_types:
@@ -252,6 +237,7 @@ def compute_segmentation_metrics(ap_data, gt_masks, gt_boxes, gt_classes, pred_m
                     ap_obj.push(score_func(i), True)
                 
                 ap_obj.push(score_func(i), False)
+
 
 class APDataObject:
     """
@@ -375,28 +361,6 @@ if __name__ == '__main__':
     import datetime
 
     parse_args()
-
-    new_nms_config = {
-        'nms_type': args.nms_mode, 
-        'mask_thr': args.score_threshold, 
-        'update_thr': args.score_threshold,
-        'top_k': args.top_k,}
-
-    set_cfg(args.config)
-
-    if args.config is not None:
-        set_cfg(args.config)
-    
-    if args.trained_model == 'interrupt':
-        args.trained_model = SavePath.get_interrupt('weights/')
-    elif args.trained_model == 'latest':
-        args.trained_model = SavePath.get_latest('weights/', cfg.name)
-    
-    if args.config is None:
-        model_path = SavePath.from_str(args.trained_model)
-        args.config = model_path.model_name + '_config'
-        print('Config not specified. Parsed %s from the file name.\n' % args.config)
-        set_cfg(args.config)
     
     if args.dataset is not None:
         set_dataset(args.dataset)
@@ -407,21 +371,5 @@ if __name__ == '__main__':
         
         cudnn.fastest = True
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
-        dataset = eval(cfg.dataset.name)(cfg.dataset.valid_images, cfg.dataset.valid_info,transform=BaseTransform(MEANS), has_gt=cfg.dataset.has_gt, has_pos=cfg.dataset.has_pos)
-        print("Loading model...", end='')
-        net = PlaneRecNet(cfg)
-        net.load_weights(args.trained_model)
-        net.eval()
-        print("done.")
-
-        net = net.cuda()
-        evaluate(net, dataset, during_training=False, eval_nums=args.max_images)
-
-        if args.autopsy:
-            begin_time = (datetime.datetime.now()).strftime("%d%m%Y%H%M%S")
-            logpath = os.path.join(args.log_folder, ("autopsy_" + begin_time + "_" + cfg.name))
-            if not os.path.exists(logpath):
-                os.makedirs(logpath)
-            writer = SummaryWriter("")
-            eval_nums = 3
-            tensorborad_visual_log(net, dataset, writer, 0, eval_nums)
+        dataset = ScanNetDataset(cfg.dataset.valid_images, cfg.dataset.valid_info,transform=BaseTransform(MEANS), has_gt=cfg.dataset.has_gt, has_pos=cfg.dataset.has_pos)
+        evaluate(dataset, during_training=False, eval_nums=args.max_images)

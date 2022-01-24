@@ -6,9 +6,10 @@ This is an official implementation for PlaneRecNet: A multi-task convolutional n
 
 29th. Oct. 2021: Upload ResNet-50 based model.
 
-3rd. Nov. 2021: Nice to know that "prn" or "PRN" is a forbiden name in Windows.
+3rd. Nov. 2021: Nice to know that "prn" or "PRN" is a forbidden name in Windows.
 
 4th. Nov. 2021: For inference, input image will be resized to max(H, W) == cfg.max_size, and reserve the aspect ratio. Update enviroment.yml, so that newest GPU can run it as well.
+24th.Jan.2022: Add "auto padding" for simple_inference.py, fix misimplemented mAP metric (very sorry about that, how can I be that careless?) and update results table. Upload evaluation annotation samples of ScanNet dataset. 
 # Installation
 ## Install environment:
 - Clone this repository and enter it:
@@ -59,7 +60,7 @@ Then you will get segmentation and depth estimation results like these:
 
 
 # Training
-PlaneRecNet is trained on ScanNet with 100k samples on one single RTX 3090 with batch_size=8, it takes approximate **37 hours**. Here are the [data annotations](https://drive.google.com/file/d/17mjtZTSV2w7XoVtDYex6RmDK29hRpwg8/view?usp=sharing)(about 1.0 GB) for training of ScanNet datasets, which is based on the annotation given by [PlaneRCNN](https://github.com/NVlabs/planercnn) and converted into json file. *Please not that, our training sample is not same as PlaneRCNN, because we don't have their training split at hand.*
+PlaneRecNet is trained on ScanNet with 100k samples on one single RTX 3090 with batch_size=8, it takes approximate **37 hours**. Here are the [data annotations](https://drive.google.com/file/d/1HMaJ_gaAoP6s_KNf1jNydQgOA_5cukaL/view?usp=sharing)(about 1.0 GB) for training of ScanNet datasets, which is based on the annotation given by [PlaneRCNN](https://github.com/NVlabs/planercnn) and converted into json file. *Please not that, our training sample is not same as PlaneRCNN, because we don't have their training split at hand.*
 
 **Please notice, the pathing and naming rules in our data/dataset.py, is not compatable with the raw data extracted with the ScanNetv2 original code. Please refer to [this issue](https://github.com/EryiXie/PlaneRecNet/issues/2) for fixing tips, thanks [uyoung-jeong](https://github.com/uyoung-jeong) for that.** I will add the data preprocessing script to fix this, once I have time.
 
@@ -97,6 +98,9 @@ python3 train.py --help
 
 
 ## Multi-GPU Support
+
+**###Multi-GPU Mode is not working, I will fix it in the next update, and switch to DDP!###**
+
 We adapted the Multi-GPU support from [YOLACT](https://github.com/dbolya/yolact), as well as the introduction of how to use it as follow:
 
  - Put `CUDA_VISIBLE_DEVICES=[gpus]` on the beginning of the training command.
@@ -121,9 +125,21 @@ UserWarning: Named tensors and all their associated APIs are an experimental fea
 [W pthreadpool-cpp.cc:90] Warning: Leaking Caffe2 thread-pool after fork. (function pthreadpool)
 ```
 
+3. Fixed missimplemented mAP metric. I modified the mAP metric code at the very early stage of the impelementation, and because here we only detect one single class, I made the code a little bit easiler and I made a mistake:
+
+```
+def compute_segmentation_metrics(ap_data, gt_masks, gt_boxes, gt_classes, pred_masks, pred_boxes, pred_classes, pred_scores):
+     ...
+     # THAT THE LINE THAT COMPELETELY WRONG, which used to be: num_gt_for_class = 1
+     # num_gt_for_class is not "numbers of classes in gt", it is NUMBERS OF GT INSTANCES OF ONE SINGLE CLASS IN ONE INPUT IMAGE!
+     num_gt_for_class = sum([1 for x in gt_classes if x == 0]) 
+     ...
+```
+As described, the old wrong implemented and misunderstood "num_gt_for_class=1" resulted that the average percision was calculated only considering one instance per image. Therefore, the results were completely **wrong**. But luckily, I use the same code to evaluate PlaneRCNN and PlaneAE, so the conclusion of the paper is still valid, in my opinion.
+
 
 # Citation
-If you use PlaneRecNet or this code base in your work, please cite
+If you use PlaneRecNet or this code base in your work, please cite:
 ```
 @misc{xie2021planerecnet,
       title={PlaneRecNet: Multi-Task Learning with Cross-Task Consistency for Piece-Wise Plane Detection and Reconstruction from a Single RGB Image}, 

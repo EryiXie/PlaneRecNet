@@ -15,7 +15,7 @@ from data.augmentations import FastBaseTransform
 from data.config import set_cfg, cfg, COLORS
 from utils import timer
 from models.functions.funcs import PCA_svd
-from models.functions.funcs import calc_size_preserve_ar
+from models.functions.funcs import calc_size_preserve_ar, pad_even_divided
 from collections import defaultdict
 import numpy as np
 import scipy.io
@@ -143,10 +143,12 @@ def display_on_frame(result, frame, mask_alpha=0.5, fps_str='', no_mask=False, n
 def inference_image(net: PlaneRecNet, path: str, save_path: str = None, depth_mode: str='colored'):
     frame_np = cv2.imread(path)
     H, W, _ = frame_np.shape
+
     if frame_np is None:
         return
     frame_np = cv2.resize(frame_np, calc_size_preserve_ar(W, H, cfg.max_size), interpolation=cv2.INTER_LINEAR)
-    
+    frame_np = pad_even_divided(frame_np) #pad image to be evenly divided by 32
+
     frame = torch.from_numpy(frame_np).cuda().float()
     batch = FastBaseTransform()(frame.unsqueeze(0))
     results = net(batch)

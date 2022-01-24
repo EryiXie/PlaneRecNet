@@ -221,11 +221,11 @@ def train():
                             anno_file=cfg.dataset.train_info,
                             transform=SSDAugmentation(MEANS))
 
-    if args.validation_epoch > 0:
-        setup_eval()
-        val_dataset = eval(cfg.dataset.name)(image_path=cfg.dataset.valid_images,
-                                    anno_file=cfg.dataset.valid_info,
-                                    transform=BaseTransform(MEANS))
+    setup_eval()
+    val_dataset = eval(cfg.dataset.name)(image_path=cfg.dataset.valid_images,
+                            anno_file=cfg.dataset.valid_info,
+                            transform=BaseTransform(MEANS))
+
     prn_net = PlaneRecNet(cfg)
     net = prn_net
     net.train()
@@ -267,7 +267,6 @@ def train():
     net = net.cuda()
 
     # Initialize everything
-    # TODO: I don't understand the purpose of this? why? why?
     if not cfg.freeze_bn: prn_net.freeze_bn() # Freeze bn so we don't kill our means
     prn_net(torch.zeros(1, 3, cfg.max_size, cfg.max_size).cuda())
     if not cfg.freeze_bn: prn_net.freeze_bn(True)
@@ -291,7 +290,7 @@ def train():
     data_loader = torch.utils.data.DataLoader(dataset, args.batch_size,
                                   num_workers=args.num_workers,
                                   shuffle=True, collate_fn=detection_collate,
-                                  pin_memory=True)
+                                  pin_memory=True) # Add generator=torch.Generator(device='cuda') for pytorch >= 1.9
     
     save_path = lambda epoch, iteration: SavePath(cfg.name, epoch, iteration).get_path(root=args.save_folder)
     time_avg = MovingAverage()
