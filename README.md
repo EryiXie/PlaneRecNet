@@ -9,7 +9,8 @@ This is an official implementation for PlaneRecNet: A multi-task convolutional n
 3rd. Nov. 2021: Nice to know that "prn" or "PRN" is a forbidden name in Windows.
 
 4th. Nov. 2021: For inference, input image will be resized to max(H, W) == cfg.max_size, and reserve the aspect ratio. Update enviroment.yml, so that newest GPU can run it as well.
-24th.Jan.2022: Add "auto padding" for simple_inference.py, fix misimplemented mAP metric (very sorry about that, how can I be that careless?) and update results table. Upload evaluation annotation samples of ScanNet dataset. 
+
+24th.Jan.2022: Add "auto padding" function to simple_inference.py, fixed config invalid in eval.py, **fixed misimplemented mAP metric** (very sorry about that, how can I be that careless?) and update results table. Upload evaluation annotation samples of ScanNet dataset. (Next update, I will fix pathing issue and distributed data parallel issue.)
 # Installation
 ## Install environment:
 - Clone this repository and enter it:
@@ -60,7 +61,7 @@ Then you will get segmentation and depth estimation results like these:
 
 
 # Training
-PlaneRecNet is trained on ScanNet with 100k samples on one single RTX 3090 with batch_size=8, it takes approximate **37 hours**. Here are the [data annotations](https://drive.google.com/file/d/1HMaJ_gaAoP6s_KNf1jNydQgOA_5cukaL/view?usp=sharing)(about 1.0 GB) for training of ScanNet datasets, which is based on the annotation given by [PlaneRCNN](https://github.com/NVlabs/planercnn) and converted into json file. *Please not that, our training sample is not same as PlaneRCNN, because we don't have their training split at hand.*
+PlaneRecNet is trained on ScanNet with 100k samples on one single RTX 3090 with batch_size=8, it takes approximate **37 hours**. Here are the [data annotations](https://drive.google.com/file/d/1HMaJ_gaAoP6s_KNf1jNydQgOA_5cukaL/view?usp=sharing)(about 1.0 GB) for training, validation and evaluation on ScanNet datasets, which is based on the annotation given by [PlaneRCNN](https://github.com/NVlabs/planercnn) and converted into json file. Newly uploaded evaluation samples are refined with the rejection threshold mentioned the paper of PlaneRCNN, it results some difference, but very limited. *Please not that, our training sample is not the same as PlaneRCNN, because we don't have their training split at hand.*
 
 **Please notice, the pathing and naming rules in our data/dataset.py, is not compatable with the raw data extracted with the ScanNetv2 original code. Please refer to [this issue](https://github.com/EryiXie/PlaneRecNet/issues/2) for fixing tips, thanks [uyoung-jeong](https://github.com/uyoung-jeong) for that.** I will add the data preprocessing script to fix this, once I have time.
 
@@ -135,7 +136,7 @@ def compute_segmentation_metrics(ap_data, gt_masks, gt_boxes, gt_classes, pred_m
      num_gt_for_class = sum([1 for x in gt_classes if x == 0]) 
      ...
 ```
-As described, the old wrong implemented and misunderstood "num_gt_for_class=1" resulted that the average percision was calculated only considering one instance per image. Therefore, the results were completely **wrong**. But luckily, I use the same code to evaluate PlaneRCNN and PlaneAE, so the conclusion of the paper is still valid, in my opinion.
+As described, the old wrongly implemented and misunderstood "num_gt_for_class=1" resulted that the average percision was calculated only considering one instance per image. Therefore, the results were completely **wrong**. But luckily, I use the same code to evaluate PlaneRCNN and PlaneAE, so the conclusion of the paper is still valid, in my opinion.
 
 
 # Citation

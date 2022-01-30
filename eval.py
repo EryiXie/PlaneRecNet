@@ -33,11 +33,9 @@ def parse_args(argv=None):
     parser.add_argument('--trained_model',
                         default=None, type=str,
                         help='Trained state_dict file path to open. If "interrupt", this will open the interrupt file.')
-    parser.add_argument('--top_k', default=15, type=int,
+    parser.add_argument('--top_k', default=100, type=int,
                         help='Further restrict the number of predictions to parse')
-    parser.add_argument('--mask_nms', dest='mask_nms', action='store_false',
-                        help='If set, PlaneRecNet use mask nms instead of matrix nms.')
-    parser.add_argument('--score_threshold', default=0.3, type=float, 
+    parser.add_argument('--score_threshold', default=0.15, type=float, 
                         help='Detections with a score under this threshold will not be considered.')
     parser.add_argument("--nms_mode", default="matrix", type=str, choices=["matrix", "mask"], help='Chose NMS type from matrix and mask nms.')
     parser.add_argument('--output_coco_json', dest='output_coco_json', action='store_true',
@@ -383,6 +381,7 @@ if __name__ == '__main__':
         'top_k': args.top_k,}
 
     set_cfg(args.config)
+    cfg.solov2.replace(new_nms_config)
 
     if args.config is not None:
         set_cfg(args.config)
@@ -407,7 +406,7 @@ if __name__ == '__main__':
         
         cudnn.fastest = True
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
-        dataset = eval(cfg.dataset.name)(cfg.dataset.valid_images, cfg.dataset.valid_info,transform=BaseTransform(MEANS), has_gt=cfg.dataset.has_gt, has_pos=cfg.dataset.has_pos)
+        dataset = eval(cfg.dataset.name)(cfg.dataset.eval_images, cfg.dataset.eval_info,transform=BaseTransform(MEANS), has_gt=cfg.dataset.has_gt, has_pos=cfg.dataset.has_pos)
         print("Loading model...", end='')
         net = PlaneRecNet(cfg)
         net.load_weights(args.trained_model)

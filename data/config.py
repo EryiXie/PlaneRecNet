@@ -114,11 +114,15 @@ scannet_dataset = dataset_base.copy({
 
     # Training images and annotations
     'train_images': './scannet/scans/',
-    'train_info':   './scannetscannet_train.json',
+    'train_info':   './scannet/scannet_train.json',
 
     # Validation images and annotations.
-    'valid_images': '/scans/',
-    'valid_info':   '/scannet_val.json',
+    'valid_images': './scannet/scans/',
+    'valid_info':   './scannet/scannet_val.json',
+
+    # Evaluation images and annotations.
+    'eval_images': './scannet/scans/',
+    'eval_info':   './scannet/scannet_eval.json',
 
     # A list of names for each of you classes.
     'class_names': PLANE_CLASSES,
@@ -135,9 +139,9 @@ scannet_dataset = dataset_base.copy({
 nyu_eval = dataset_base.copy({
     'name': 'NYUDataset',
 
-    # Validation images and annotations.
-    'valid_images': '/home/xie/Documents/datasets/NYU/nyu_images/',
-    'valid_info': '/home/xie/Documents/datasets/NYU/nyu_eval.json',
+    # Evaluation images and annotations.
+    'eval_images': './NYU/nyu_images/',
+    'eval_info': './NYU/nyu_eval.json',
     # Resize scale factor
     'scale_factor': 1,
     'min_depth': 1/1000,
