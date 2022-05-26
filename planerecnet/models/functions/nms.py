@@ -5,6 +5,7 @@
 import torch
 import torch.nn.functional as F
 
+
 def point_nms(heat, kernel=2):
     # kernel must be 2
     hmax = F.max_pool2d(heat, (kernel, kernel), stride=1, padding=1)

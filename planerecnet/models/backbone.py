@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
-from models.dcn import DeformableConv2d
+
+from planerecnet.models.dcn import DeformableConv2d
+
 
 class Bottleneck(nn.Module):
     """ Adapted from torchvision.models.resnet """
@@ -8,14 +10,14 @@ class Bottleneck(nn.Module):
     expansion = 4
 
     def __init__(
-        self,
-        inplanes,
-        planes,
-        stride=1,
-        downsample=None,
-        norm_layer=nn.BatchNorm2d,
-        dilation=1,
-        use_dcn=False,
+            self,
+            inplanes,
+            planes,
+            stride=1,
+            downsample=None,
+            norm_layer=nn.BatchNorm2d,
+            dilation=1,
+            use_dcn=False,
     ):
         super(Bottleneck, self).__init__()
         self.conv1 = nn.Conv2d(
@@ -30,7 +32,7 @@ class Bottleneck(nn.Module):
                 stride=stride,
                 padding=dilation,
                 bias=True
-                )
+            )
         else:
             self.conv2 = nn.Conv2d(
                 planes,
@@ -77,13 +79,13 @@ class ResNetBackbone(nn.Module):
     """ Adapted from torchvision.models.resnet """
 
     def __init__(
-        self,
-        layers,
-        dcn_layers=[0, 0, 0, 0],
-        dcn_interval=1,
-        atrous_layers=[],
-        block=Bottleneck,
-        norm_layer=nn.BatchNorm2d,
+            self,
+            layers,
+            dcn_layers=[0, 0, 0, 0],
+            dcn_interval=1,
+            atrous_layers=[],
+            block=Bottleneck,
+            norm_layer=nn.BatchNorm2d,
     ):
         super().__init__()
 
@@ -104,10 +106,10 @@ class ResNetBackbone(nn.Module):
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         self._make_layer(
-            block, 
-            64, 
-            layers[0], 
-            dcn_layers=dcn_layers[0], 
+            block,
+            64,
+            layers[0],
+            dcn_layers=dcn_layers[0],
             dcn_interval=dcn_interval
         )
         self._make_layer(
@@ -142,7 +144,7 @@ class ResNetBackbone(nn.Module):
         self.backbone_modules = [m for m in self.modules() if isinstance(m, nn.Conv2d)]
 
     def _make_layer(
-        self, block, planes, blocks, stride=1, dcn_layers=0, dcn_interval=1
+            self, block, planes, blocks, stride=1, dcn_layers=0, dcn_interval=1
     ):
         """ Here one layer means a string of n Bottleneck blocks. """
         downsample = None
@@ -202,7 +204,7 @@ class ResNetBackbone(nn.Module):
         x = self.relu(x)
         x = self.maxpool(x)
 
-        for layer in self.layers: # for c2 to c5
+        for layer in self.layers:  # for c2 to c5
             x = layer(x)
             outs.append(x)
 

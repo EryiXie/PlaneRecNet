@@ -1,27 +1,24 @@
-import os
-import time
 import argparse
 import datetime
-import cv2
-import numpy as np
-import math, random
+import math
+import os
+import random
+import time
 
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from tensorboardX import SummaryWriter
 
-from planerecnet import PlaneRecNet
-from data.config import cfg, MEANS, set_cfg, set_dataset
-from data.datasets import PlaneAnnoDataset, S2D3DSDataset, ScanNetDataset, detection_collate, enforce_size
-from data.augmentations import SSDAugmentation, BaseTransform
-from utils.utils import SavePath, MovingAverage
-from utils import timer
-from models.functions.losses import PlaneRecNetLoss
-from models.functions.nms import point_nms
-
-import eval as eval_script
+import planerecnet.eval as eval_script
+from planerecnet.data.augmentations import SSDAugmentation, BaseTransform
+from planerecnet.data.config import cfg, MEANS, set_cfg, set_dataset
+from planerecnet.data.datasets import PlaneAnnoDataset, detection_collate, enforce_size
+from planerecnet.models.functions.losses import PlaneRecNetLoss
+from planerecnet.planerecnet import PlaneRecNet
+from planerecnet.utils import timer
+from planerecnet.utils.utils import SavePath, MovingAverage
 
 parser = argparse.ArgumentParser(description='PlaneRecNet Training Script')
 # Basic Settings
@@ -34,12 +31,12 @@ parser.add_argument('--save_folder', default='./weights/',
 parser.add_argument('--log_folder', default='./logs/',
                     help='Directory for saving logs.')
 parser.add_argument('--backbone_folder', default='./weights/',
-                    help='Directory for loading Backbone.')                 
+                    help='Directory for loading Backbone.')
 parser.add_argument('--resume', default=None, type=str,
-                    help='Checkpoint state_dict file to resume training from. If this is "interrupt"'\
+                    help='Checkpoint state_dict file to resume training from. If this is "interrupt"' \
                          ', the model will resume training from the interrupt file.')
 parser.add_argument('--start_iter', default=-1, type=int,
-                    help='Resume training at this iter. If this is -1, the iteration will be'\
+                    help='Resume training at this iter. If this is -1, the iteration will be' \
                          'determined from the file name.')
 parser.add_argument('--validation_size', default=2000, type=int,
                     help='The number of images to use for validation.')
@@ -50,7 +47,7 @@ parser.add_argument('--no_tensorboard', dest='no_tensorboard', action='store_tru
 parser.add_argument('--no_autoscale', dest='autoscale', action='store_false',
                     help='Automatically scale the lr and the number of iterations depending on the batch size. Set this if you want to disable that.')
 parser.add_argument('--reproductablity', dest='reproductablity', action='store_true',
-                    help='Set this if you want to reproduct the almost same results as given in the ablation study.')                
+                    help='Set this if you want to reproduct the almost same results as given in the ablation study.')
 
 # Hyper Parameters for Training
 parser.add_argument('--batch_size', default=8, type=int,
@@ -96,9 +93,12 @@ if args.autoscale and args.batch_size != 8:
     cfg.max_iter //= factor
     cfg.lr_steps = [x // factor for x in cfg.lr_steps]
 
+
 # Update training parameters from the config if necessary
 def replace(name):
     if getattr(args, name) == None: setattr(args, name, getattr(cfg, name))
+
+
 replace('lr')
 replace('decay')
 replace('gamma')
@@ -131,11 +131,11 @@ class NetLoss(nn.Module):
     This is so we can more efficiently use DataParallel.
     """
 
-    def __init__(self, net:PlaneRecNet, criterion:PlaneRecNetLoss):
+    def __init__(self, net: PlaneRecNet, criterion: PlaneRecNetLoss):
         super().__init__()
         self.net = net
         self.criterion = criterion
-    
+
     def forward(self, batched_images, batched_gt_instances, batched_gt_depths):
         """
         Args:
@@ -146,7 +146,8 @@ class NetLoss(nn.Module):
             - losses: a dict, losses from PlaneRecNet
         """
         mask_pred, cate_pred, kernel_pred, depth_pred = self.net(batched_images)
-        losses = self.criterion(self.net, mask_pred, cate_pred, kernel_pred, depth_pred, batched_gt_instances, batched_gt_depths)
+        losses = self.criterion(self.net, mask_pred, cate_pred, kernel_pred, depth_pred, batched_gt_instances,
+                                batched_gt_depths)
         return losses
 
 
@@ -156,6 +157,7 @@ class CustomDataParallel(nn.DataParallel):
     It should also be faster than the general case.
     
     """
+
     def scatter(self, inputs, kwargs, device_ids):
         # More like scatter and data prep at the same time. The point is we prep the data in such a way
         # that no scatter is necessary, and there's no need to shuffle stuff around different GPUs.
@@ -163,52 +165,54 @@ class CustomDataParallel(nn.DataParallel):
         splits = self.prepare_data(inputs[0], devices, allocation=args.batch_alloc)
 
         return [[split[device_idx] for split in splits] for device_idx in range(len(devices))], \
-            [kwargs] * len(devices)
+               [kwargs] * len(devices)
 
     def gather(self, outputs, output_device):
         out = {}
 
         for k in outputs[0]:
             out[k] = torch.stack([output[k].to(output_device) for output in outputs])
-        
+
         return out
-    
+
     @torch.no_grad()
-    def prepare_data(self, datum, devices:list=None, allocation:list=None):
+    def prepare_data(self, datum, devices: list = None, allocation: list = None):
 
         def gradinator(x):
             x.requires_grad = False
             return x
+
         if devices is None:
             devices = ['cuda:0']
         if allocation is None:
             allocation = [args.batch_size // len(devices)] * (len(devices) - 1)
-            allocation.append(args.batch_size - sum(allocation)) # The rest might need more/less
-        
+            allocation.append(args.batch_size - sum(allocation))  # The rest might need more/less
+
         batched_images, batched_gt_instances, batched_gt_depths = datum
 
         cur_idx = 0
         for device, alloc in zip(devices, allocation):
             for _ in range(alloc):
-                batched_images[cur_idx]  = gradinator(batched_images[cur_idx].to(device))
-                batched_gt_depths[cur_idx]  = gradinator(batched_gt_depths[cur_idx].to(device))
+                batched_images[cur_idx] = gradinator(batched_images[cur_idx].to(device))
+                batched_gt_depths[cur_idx] = gradinator(batched_gt_depths[cur_idx].to(device))
                 for key in batched_gt_instances[cur_idx]:
                     batched_gt_instances[cur_idx][key] = gradinator(batched_gt_instances[cur_idx][key].to(device))
                 cur_idx += 1
 
         if cfg.preserve_aspect_ratio:
             # Choose a random size from the batch
-            _, h, w = batched_images[random.randint(0, len(batched_images)-1)].size()
-            for idx, (image, gt_depth, gt_instances) in enumerate(zip(batched_images, batched_gt_depths, batched_gt_instances)):
+            _, h, w = batched_images[random.randint(0, len(batched_images) - 1)].size()
+            for idx, (image, gt_depth, gt_instances) in enumerate(
+                    zip(batched_images, batched_gt_depths, batched_gt_instances)):
                 batched_images[idx], batched_gt_depths[idx], batched_gt_instances[idx] \
                     = enforce_size(image, gt_depth, gt_instances, w, h)
         cur_idx = 0
         split_images, split_depths, split_instances = [[None for alloc in allocation] for _ in range(3)]
 
         for device_idx, alloc in enumerate(allocation):
-            split_images[device_idx]    = torch.stack(batched_images[cur_idx:cur_idx+alloc], dim=0)
-            split_depths[device_idx]    = torch.stack(batched_gt_depths[cur_idx:cur_idx+alloc], dim=0)
-            split_instances[device_idx]   = batched_gt_instances[cur_idx:cur_idx+alloc]
+            split_images[device_idx] = torch.stack(batched_images[cur_idx:cur_idx + alloc], dim=0)
+            split_depths[device_idx] = torch.stack(batched_gt_depths[cur_idx:cur_idx + alloc], dim=0)
+            split_instances[device_idx] = batched_gt_instances[cur_idx:cur_idx + alloc]
             cur_idx += alloc
         return split_images, split_instances, split_depths
 
@@ -217,19 +221,19 @@ def train():
     if not os.path.exists(args.save_folder):
         os.mkdir(args.save_folder)
 
-    dataset = eval(cfg.dataset.name)(image_path=cfg.dataset.train_images, 
-                            anno_file=cfg.dataset.train_info,
-                            transform=SSDAugmentation(MEANS))
+    dataset = eval(cfg.dataset.name)(image_path=cfg.dataset.train_images,
+                                     anno_file=cfg.dataset.train_info,
+                                     transform=SSDAugmentation(MEANS))
 
     setup_eval()
     val_dataset = eval(cfg.dataset.name)(image_path=cfg.dataset.valid_images,
-                            anno_file=cfg.dataset.valid_info,
-                            transform=BaseTransform(MEANS))
+                                         anno_file=cfg.dataset.valid_info,
+                                         transform=BaseTransform(MEANS))
 
     prn_net = PlaneRecNet(cfg)
     net = prn_net
     net.train()
-    
+
     timer.disable_all()
 
     # Both of these can set args.resume to None, so do them before the check    
@@ -247,14 +251,14 @@ def train():
     else:
         print('Initializing weights...')
         prn_net.init_weights(backbone_path=args.backbone_folder + cfg.backbone.path)
-    
+
     optimizer = optim.Adam([
-        {'params': net.backbone.parameters(), 'lr': 5*args.lr},
+        {'params': net.backbone.parameters(), 'lr': 5 * args.lr},
         {'params': net.fpn.parameters(), 'lr': args.lr},
         {'params': net.inst_head.parameters(), 'lr': args.lr},
         {'params': net.mask_head.parameters(), 'lr': args.lr},
-        {'params': net.depth_decoder.parameters(), 'lr': 2*args.lr}], lr=args.lr)
-    
+        {'params': net.depth_decoder.parameters(), 'lr': 2 * args.lr}], lr=args.lr)
+
     criterion = PlaneRecNetLoss()
 
     if args.batch_alloc is not None:
@@ -262,12 +266,12 @@ def train():
         if sum(args.batch_alloc) != args.batch_size:
             print('Error: Batch allocation (%s) does not sum to batch size (%s).' % (args.batch_alloc, args.batch_size))
             exit(-1)
-    
+
     net = CustomDataParallel(NetLoss(net, criterion))
     net = net.cuda()
 
     # Initialize everything
-    if not cfg.freeze_bn: prn_net.freeze_bn() # Freeze bn so we don't kill our means
+    if not cfg.freeze_bn: prn_net.freeze_bn()  # Freeze bn so we don't kill our means
     prn_net(torch.zeros(1, 3, cfg.max_size, cfg.max_size).cuda())
     if not cfg.freeze_bn: prn_net.freeze_bn(True)
 
@@ -288,10 +292,10 @@ def train():
 
     # If Pytorch >= 1.9, please set the generator to utilize cuda to avoid crush.
     data_loader = torch.utils.data.DataLoader(dataset, args.batch_size,
-                                  num_workers=args.num_workers,
-                                  shuffle=True, collate_fn=detection_collate,
-                                  pin_memory=True) # Add generator=torch.Generator(device='cuda') for pytorch >= 1.9
-    
+                                              num_workers=args.num_workers,
+                                              shuffle=True, collate_fn=detection_collate,
+                                              pin_memory=True)  # Add generator=torch.Generator(device='cuda') for pytorch >= 1.9
+
     save_path = lambda epoch, iteration: SavePath(cfg.name, epoch, iteration).get_path(root=args.save_folder)
     time_avg = MovingAverage()
 
@@ -304,12 +308,12 @@ def train():
     try:
         for epoch in range(num_epochs):
             # Resume from start_iter
-            if (epoch+1)*epoch_size < iteration:
+            if (epoch + 1) * epoch_size < iteration:
                 continue
-            
+
             for datum in data_loader:
                 # Stop if we've reached an epoch if we're resuming from start_iter
-                if iteration == (epoch+1)*epoch_size:
+                if iteration == (epoch + 1) * epoch_size:
                     break
 
                 # Stop at the configured number of iterations even if mid-epoch
@@ -326,39 +330,40 @@ def train():
                         # Reset the loss averages because things might have changed
                         for avg in loss_avgs:
                             avg.reset()
-                
+
                 # If a config setting was changed, remove it from the list so we don't keep checking
                 if changed:
                     cfg.delayed_settings = [x for x in cfg.delayed_settings if x[0] > iteration]
 
                 # Warm up by linearly interpolating the learning rate from some smaller value
                 if cfg.lr_warmup_until > 0 and iteration <= cfg.lr_warmup_until:
-                    set_lr(optimizer, (args.lr - cfg.lr_warmup_init) * (iteration / cfg.lr_warmup_until) + cfg.lr_warmup_init)
+                    set_lr(optimizer,
+                           (args.lr - cfg.lr_warmup_init) * (iteration / cfg.lr_warmup_until) + cfg.lr_warmup_init)
 
                 # Adjust the learning rate at the given iterations, but also if we resume from past that iteration
                 while step_index < len(cfg.lr_steps) and iteration >= cfg.lr_steps[step_index]:
                     step_index += 1
                     set_lr(optimizer, args.lr * (args.gamma ** step_index))
-                
+
                 # Zero the grad to get ready to compute gradients
                 optimizer.zero_grad()
 
                 # Forward Pass + Compute loss at the same time (see CustomDataParallel and NetLoss)
                 losses = net(datum)
-                losses = {k: (v).mean() for k,v in losses.items()} # Mean here because Dataparallel
+                losses = {k: (v).mean() for k, v in losses.items()}  # Mean here because Dataparallel
                 loss = sum([losses[k] for k in losses])
 
                 # Backprop
-                loss.backward() # Do this to free up vram even if loss is not finite
+                loss.backward()  # Do this to free up vram even if loss is not finite
                 if torch.isfinite(loss).item():
                     optimizer.step()
-                
+
                 # Add the loss to the moving average for bookkeeping
                 for k in losses:
                     loss_avgs[k].add(losses[k].item())
 
-                cur_time  = time.time()
-                elapsed   = cur_time - last_time
+                cur_time = time.time()
+                elapsed = cur_time - last_time
                 last_time = cur_time
 
                 # Exclude graph setup from the timing information
@@ -367,17 +372,19 @@ def train():
 
                 if iteration % 50 == 0:
                     # log losses to tensorboard
-                    if not args.no_tensorboard: 
+                    if not args.no_tensorboard:
                         log_losses(writer, losses, iteration)
                         if iteration % 5000 == 0 and iteration > 0:
                             log_visual_example(prn_net, val_dataset, writer, iteration)
                     if iteration % 100 == 0:
                         # print losses(moving averaged) to console
-                        eta_str = str(datetime.timedelta(seconds=(cfg.max_iter-iteration) * time_avg.get_avg())).split('.')[0]
+                        eta_str = \
+                        str(datetime.timedelta(seconds=(cfg.max_iter - iteration) * time_avg.get_avg())).split('.')[0]
                         total = sum([loss_avgs[k].get_avg() for k in losses])
                         loss_labels = sum([[k, loss_avgs[k].get_avg()] for k in loss_types if k in losses], [])
-                        print(('[%3d] %7d ||' + (' %s: %.3f |' * len(losses)) + ' total: %.3f || ETA: %s || time/batch: %.3fs')
-                                % tuple([epoch, iteration] + loss_labels + [total, eta_str, elapsed]), flush=True)
+                        print(('[%3d] %7d ||' + (
+                                    ' %s: %.3f |' * len(losses)) + ' total: %.3f || ETA: %s || time/batch: %.3fs')
+                              % tuple([epoch, iteration] + loss_labels + [total, eta_str, elapsed]), flush=True)
                 iteration += 1
 
                 if iteration % args.save_interval == 0 and iteration != args.start_iter:
@@ -388,16 +395,16 @@ def train():
                     prn_net.save_weights(save_path(epoch, iteration))
 
                     if args.keep_latest and latest is not None:
-                            if args.keep_latest_interval <= 0 or iteration % args.keep_latest_interval != args.save_interval:
-                                print('Deleting old save...')
-                                os.remove(latest)
+                        if args.keep_latest_interval <= 0 or iteration % args.keep_latest_interval != args.save_interval:
+                            print('Deleting old save...')
+                            os.remove(latest)
 
             # This is done per epoch
             if args.validation_epoch > 0:
-                if epoch % args.validation_epoch == 0 and iteration > 0 and epoch < num_epochs-2:
-                # no validation when iteration = 0 or when last epoch
+                if epoch % args.validation_epoch == 0 and iteration > 0 and epoch < num_epochs - 2:
+                    # no validation when iteration = 0 or when last epoch
                     compute_validation_metrics(epoch, iteration, prn_net, val_dataset, args.validation_size)
-        
+
         # Compute validation mAP after training is finished
         compute_validation_metrics(epoch, iteration, prn_net, val_dataset)
 
@@ -415,12 +422,12 @@ def train():
 def set_lr(optimizer, new_lr):
     for param_group in optimizer.param_groups:
         param_group['lr'] = new_lr
-    
+
     global cur_lr
     cur_lr = new_lr
 
 
-def no_inf_mean(x:torch.Tensor):
+def no_inf_mean(x: torch.Tensor):
     """
     Computes the mean of a vector, throwing out all inf values.
     If there are no non-inf values, this will return inf (i.e., just the normal mean).
@@ -440,10 +447,10 @@ def setup_eval():
 def compute_validation_metrics(epoch, iteration, prn_net, val_dataset, eval_nums=-1):
     with torch.no_grad():
         prn_net.eval()
-        start =  time.time()
+        start = time.time()
         print()
         print("Computing validation metrics (this may take a while)...", flush=True)
-        eval_script.evaluate(prn_net,val_dataset, during_training=True, eval_nums=eval_nums)
+        eval_script.evaluate(prn_net, val_dataset, during_training=True, eval_nums=eval_nums)
         end = time.time()
         prn_net.train()
 
@@ -460,13 +467,14 @@ def log_losses(writer: SummaryWriter, losses, iteration):
     writer.add_scalar("Losses:{}".format("total"), total, iteration)
 
 
-def log_visual_example(prn_net: PlaneRecNet, val_dataset: PlaneAnnoDataset, writer: SummaryWriter, iteration, eval_nums=5):
+def log_visual_example(prn_net: PlaneRecNet, val_dataset: PlaneAnnoDataset, writer: SummaryWriter, iteration,
+                       eval_nums=5):
     """
     Write visaul examples to the event file
     """
     with torch.no_grad():
         prn_net.eval()
-        start =  time.time()
+        start = time.time()
         eval_script.tensorborad_visual_log(prn_net, val_dataset, writer, iteration, eval_nums)
         end = time.time()
         prn_net.train()

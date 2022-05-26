@@ -1,13 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from data.config import cfg
+
+from planerecnet.data.config import cfg
+
 
 class FPN(nn.Module):
     def __init__(
-        self,
-        in_channels,
-        start_level=0
+            self,
+            in_channels,
+            start_level=0
     ):
         super(FPN, self).__init__()
         assert isinstance(in_channels, list)
@@ -22,11 +24,10 @@ class FPN(nn.Module):
         self.lateral_convs = nn.ModuleList()
         self.fpn_convs = nn.ModuleList()
 
-
         for i in range(self.start_level, self.backbone_end_level):
             l_conv = nn.Conv2d(in_channels[i], self.out_channels, kernel_size=1)
             self.lateral_convs.append(l_conv)
-        
+
         for ii in range(self.start_level, self.backbone_end_level):
             p_conv = nn.Conv2d(self.out_channels, self.out_channels, kernel_size=3, padding=1)
             self.fpn_convs.append(p_conv)
@@ -37,11 +38,12 @@ class FPN(nn.Module):
                 for _ in range(2)
             ])
 
-        self.interpolation_mode     = cfg.fpn.interpolation_mode
-        self.relu_pred_layers       = cfg.fpn.relu_pred_layers
-        self.high_level_mode        = cfg.fpn.high_level_mode
-        assert not(cfg.fpn.high_level_mode == 'retina' and cfg.fpn.high_level_mode == 'original' and (cfg.fpn.high_level_mode is not None))
-            
+        self.interpolation_mode = cfg.fpn.interpolation_mode
+        self.relu_pred_layers = cfg.fpn.relu_pred_layers
+        self.high_level_mode = cfg.fpn.high_level_mode
+        assert not (cfg.fpn.high_level_mode == 'retina' and cfg.fpn.high_level_mode == 'original' and (
+                    cfg.fpn.high_level_mode is not None))
+
     def forward(self, inputs):
         assert len(inputs) == len(self.in_channels)
 
@@ -61,7 +63,7 @@ class FPN(nn.Module):
             outs.append(predict_conv(laterals[ii]))
             if self.relu_pred_layers:
                 F.relu(outs[ii], inplace=True)
-        
+
         if self.high_level_mode == 'original':
             p6 = F.max_pool2d(outs[-1], kernel_size=1, stride=2, padding=0)
             outs.append(p6)

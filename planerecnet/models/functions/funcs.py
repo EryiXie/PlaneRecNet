@@ -1,9 +1,9 @@
+import cv2
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import cv2
-from math import sqrt
-import numpy as np
+
 
 @torch.jit.script
 def intersect(box_a, box_b):
@@ -46,14 +46,15 @@ def bbox_iou(box_a, box_b):
         box_b = box_b[None, ...]
 
     inter = intersect(box_a, box_b)
-    area_a = ((box_a[:, :, 2]-box_a[:, :, 0]) *
-              (box_a[:, :, 3]-box_a[:, :, 1])).unsqueeze(2).expand_as(inter)  # [A,B]
-    area_b = ((box_b[:, :, 2]-box_b[:, :, 0]) *
-              (box_b[:, :, 3]-box_b[:, :, 1])).unsqueeze(1).expand_as(inter)  # [A,B]
+    area_a = ((box_a[:, :, 2] - box_a[:, :, 0]) *
+              (box_a[:, :, 3] - box_a[:, :, 1])).unsqueeze(2).expand_as(inter)  # [A,B]
+    area_b = ((box_b[:, :, 2] - box_b[:, :, 0]) *
+              (box_b[:, :, 3] - box_b[:, :, 1])).unsqueeze(1).expand_as(inter)  # [A,B]
     union = area_a + area_b - inter
 
     out = inter / union
     return out if use_batch else out.squeeze(0)
+
 
 def mask_iou(masks_a, masks_b, iscrowd=False):
     """
@@ -192,6 +193,7 @@ def imrescale(img, scale, return_scale=False, interpolation='bilinear'):
     else:
         return rescaled_img
 
+
 def calc_size_preserve_ar(img_w, img_h, max_size):
     if img_w > img_h:
         w = max_size
@@ -201,11 +203,12 @@ def calc_size_preserve_ar(img_w, img_h, max_size):
         w = img_w / img_h * max_size
     return (int(w), int(h))
 
+
 def pad_even_divided(img, divisor=32):
     h, w, c = img.shape
-    ext_h = divisor - h%divisor if h%divisor!=0 else 0 
-    ext_w = divisor - w%divisor if w%divisor!=0 else 0 
-    padded_img = np.zeros((h+ext_h, w+ext_w, c))
+    ext_h = divisor - h % divisor if h % divisor != 0 else 0
+    ext_w = divisor - w % divisor if w % divisor != 0 else 0
+    padded_img = np.zeros((h + ext_h, w + ext_w, c))
     padded_img[0:h, 0:w, :] = img
     return padded_img
 
@@ -223,15 +226,16 @@ def center_of_mass(bitmasks):
     center_y = m01 / m00
     return center_x, center_y
 
+
 def get_points_coordinate(depth, intrinsic_inv):
-    B, C, H, W  = depth.shape
+    B, C, H, W = depth.shape
     y, x = torch.meshgrid([torch.arange(0, H, dtype=torch.float),
                            torch.arange(0, W, dtype=torch.float)])
     y, x = y.contiguous(), x.contiguous()
     y, x = y.view(H * W), x.view(H * W)
     xyz = torch.stack((x, y, torch.ones_like(x))).cuda()  # [3, H*W]
     xyz = torch.unsqueeze(xyz, 0).repeat(B, 1, 1)  # [B, 3, H*W]
-    xyz = torch.matmul(intrinsic_inv, xyz) # [B, 3, H*W]
+    xyz = torch.matmul(intrinsic_inv, xyz)  # [B, 3, H*W]
     depth_xyz = xyz * depth.view(B, 1, -1)  # [B, 3, Ndepth, H*W]
 
     return depth_xyz.view(B, 3, H, W)
@@ -241,24 +245,23 @@ def get_surface_normal(point_clouds, valid_condition):
     '''
     Surface normal computation method from GeoNet https://github.com/xjqi/GeoNet
     '''
-    B, C, H, W= point_clouds.shape
+    B, C, H, W = point_clouds.shape
     point_matrix = F.unfold(point_clouds, kernel_size=5, stride=1, padding=4, dilation=2)
-    
+
     valid_condition = F.unfold(valid_condition, kernel_size=5, stride=1, padding=4, dilation=2)
     valid_condition = valid_condition.view(-1, 1, 5 * 5, H, W)
     valid_condition = valid_condition.permute(0, 3, 4, 2, 1)  # (b, h, w, self.k_size*self.k_size, 1)
     valid_condition_all = valid_condition.repeat([1, 1, 1, 1, 3])
     valid_condition_all = (valid_condition_all > 0.5).cuda()
-    
-    
+
     # An = b
     matrix_a = point_matrix.view(B, 3, 25, H, W)  # (B, 3, 25, HxW)
-    matrix_a = matrix_a.permute(0, 3, 4, 2, 1) # (B, HxW, 25, 3)
-    
+    matrix_a = matrix_a.permute(0, 3, 4, 2, 1)  # (B, HxW, 25, 3)
+
     matrix_a_zero = torch.zeros_like(matrix_a)
     matrix_a_valid = torch.where(valid_condition_all, matrix_a, matrix_a_zero)
     matrix_a_trans = matrix_a_valid.transpose(3, 4)
-    
+
     matrix_a_trans = matrix_a.transpose(3, 4)
     matrix_b = torch.ones([1, H, W, 25, 1]).float().cuda()
 
@@ -284,12 +287,13 @@ def get_surface_normal(point_clouds, valid_condition):
     norm_normalize = F.normalize(generated_norm, p=2., dim=3)
     return norm_normalize
 
+
 def PCA_svd(pts):
     mean = pts.mean(dim=0)
     pts_adjust = pts - mean
     H = torch.mm(pts_adjust.transpose(0, 1), pts_adjust)
     eigenvectors, eigenvalues, eigenvectors_T = torch.svd(H)
-    return mean, eigenvectors[:,2]
+    return mean, eigenvectors[:, 2]
 
 
 def xavier_init(module, gain=1, bias=0, distribution="normal"):
@@ -315,7 +319,7 @@ def uniform_init(module, a=0, b=1, bias=0):
 
 
 def kaiming_init(
-    module, mode="fan_out", nonlinearity="relu", bias=0, distribution="normal"
+        module, mode="fan_out", nonlinearity="relu", bias=0, distribution="normal"
 ):
     assert distribution in ["uniform", "normal"]
     if distribution == "uniform":

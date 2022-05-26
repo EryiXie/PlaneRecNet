@@ -7,15 +7,17 @@ import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from data.config import cfg
-from utils import timer
-from models.functions.nms import point_nms, matrix_nms, mask_nms
-from models.functions.funcs import bias_init_with_prob
-from models.fpn import FPN
-from models.backbone import construct_backbone
-from data.augmentations import FastBaseTransform
+
+from planerecnet.data.augmentations import FastBaseTransform
+from planerecnet.data.config import cfg
+from planerecnet.models.backbone import construct_backbone
+from planerecnet.models.fpn import FPN
+from planerecnet.models.functions.funcs import bias_init_with_prob
+from planerecnet.models.functions.nms import point_nms, matrix_nms, mask_nms
+from planerecnet.utils import timer
 
 torch.cuda.current_device()
+
 
 class PlaneRecNet(nn.Module):
     def __init__(self, cfg):
@@ -51,7 +53,7 @@ class PlaneRecNet(nn.Module):
         self.nms_kernel = cfg.solov2.nms_kernel
         self.nms_sigma = cfg.solov2.nms_sigma
         self.nms_type = cfg.solov2.nms_type
-        
+
         # build backbone and fpn
         self.backbone = construct_backbone(cfg.backbone)
         if cfg.freeze_bn:
@@ -69,59 +71,60 @@ class PlaneRecNet(nn.Module):
         # build the mask head.
         mask_shapes = [cfg.fpn.num_features for _ in range(len(cfg.solov2.masks_in_features))]
         self.mask_head = SOLOv2MaskHead(cfg, mask_shapes)
-    
+
     def forward(self, x):
 
         # Backbone
         with timer.env("backbone"):
             features_encoder = self.backbone(x)
-            #for i in features: print(i.shape)
-        
+            # for i in features: print(i.shape)
+
         # Feature Pyramid Network
         with timer.env("fpn"):
             features = self.fpn([features_encoder[i] for i in self.fpn_indices])
-        
+
         # Instance Branch
         with timer.env("instance head"):
             ins_features = [features[f] for f in range(len(self.instance_in_features))]
             ins_features = self.split_feats(ins_features)
             cate_pred, kernel_pred = self.inst_head(ins_features)
-        
+
         # Mask Branch
         with timer.env('mask head'):
             mask_features = [features[f] for f in range(len(self.mask_in_features))]
             mask_pred = self.mask_head(mask_features)
-        
-                # Depth Decoding
+
+            # Depth Decoding
         with timer.env("depth_decoder"):
-            depth_pred = self.depth_decoder([features_encoder[i] for i in self.depth_decoder_indices], mask_pred, kernel_pred)
+            depth_pred = self.depth_decoder([features_encoder[i] for i in self.depth_decoder_indices], mask_pred,
+                                            kernel_pred)
 
         # Inference or output for trainng
         with timer.env('Inferencing'):
             if self.training:
-                #mask_feat_size = mask_pred.size()[-2:]
+                # mask_feat_size = mask_pred.size()[-2:]
                 return mask_pred, cate_pred, kernel_pred, depth_pred
             else:
                 # point nms.
                 cate_pred = [point_nms(cate_p.sigmoid(), kernel=2).permute(0, 2, 3, 1)
-                            for cate_p in cate_pred]
+                             for cate_p in cate_pred]
                 # do inference for results.
                 results = self.inference(mask_pred, cate_pred, kernel_pred, depth_pred, x)
 
                 return results
-    
+
     @staticmethod
     def split_feats(feats):
-        return (F.interpolate(feats[0], scale_factor=0.5, mode='bilinear', align_corners=False, recompute_scale_factor=False),
-                feats[1],
-                feats[2],
-                feats[3])
-        
-        
+        return (
+        F.interpolate(feats[0], scale_factor=0.5, mode='bilinear', align_corners=False, recompute_scale_factor=False),
+        feats[1],
+        feats[2],
+        feats[3])
+
     def save_weights(self, path):
         """ Saves the model's weights using compression because the file sizes were getting too big. """
         torch.save(self.state_dict(), path)
-    
+
     def load_weights(self, path):
         """ Loads weights from a compressed save file. """
         state_dict = torch.load(path)
@@ -143,7 +146,7 @@ class PlaneRecNet(nn.Module):
                         module.bias.data.fill_(bias_value)
                     else:
                         module.bias.data.fill_(0)
-                    
+
     def freeze_bn(self, enable=False):
         """ Adapted from https://discuss.pytorch.org/t/how-to-train-with-frozen-batchnorm/12106/8 """
         for module in self.modules():
@@ -165,9 +168,9 @@ class PlaneRecNet(nn.Module):
 
             # prediction.
             pred_cate = [pred_cates[i][img_idx].view(-1, self.num_classes).detach()
-                            for i in range(num_ins_levels)]
+                         for i in range(num_ins_levels)]
             pred_kernel = [pred_kernels[i][img_idx].permute(1, 2, 0).view(-1, self.num_kernels).detach()
-                            for i in range(num_ins_levels)]
+                           for i in range(num_ins_levels)]
             pred_mask = pred_masks[img_idx, ...].unsqueeze(0)
 
             pred_cate = torch.cat(pred_cate, dim=0)
@@ -180,11 +183,12 @@ class PlaneRecNet(nn.Module):
         return results
 
     def inference_single_image(self, seg_preds, cate_preds, kernel_preds, depth_pred, ori_size):
-        result = {'pred_masks': None, 'pred_boxes': None, 'pred_classes': None, 'pred_scores': None, 'pred_depth': None,}
+        result = {'pred_masks': None, 'pred_boxes': None, 'pred_classes': None, 'pred_scores': None,
+                  'pred_depth': None, }
 
         # depth interpolation
         result['pred_depth'] = F.interpolate(depth_pred, size=ori_size, mode='bilinear', align_corners=False).detach()
-        
+
         # process.
         inds = (cate_preds > self.score_threshold)
         cate_scores = cate_preds[inds]
@@ -210,7 +214,6 @@ class PlaneRecNet(nn.Module):
         N, I = kernel_preds.shape
         kernel_preds = kernel_preds.view(N, I, 1, 1)
         seg_preds = F.conv2d(seg_preds, kernel_preds, stride=1).squeeze(0).sigmoid()
-
 
         # mask.
         seg_masks = seg_preds > self.mask_threshold
@@ -244,12 +247,12 @@ class PlaneRecNet(nn.Module):
         if self.nms_type == "matrix":
             # matrix nms & filter.
             cate_scores = matrix_nms(cate_labels, seg_masks, sum_masks, cate_scores,
-                                          sigma=self.nms_sigma, kernel=self.nms_kernel)
+                                     sigma=self.nms_sigma, kernel=self.nms_kernel)
             keep = cate_scores >= self.update_threshold
         elif self.nms_type == "mask":
             # original mask nms.
             keep = mask_nms(cate_labels, seg_masks, sum_masks, cate_scores,
-                                 nms_thr=self.mask_threshold)
+                            nms_thr=self.mask_threshold)
         else:
             raise NotImplementedError
 
@@ -284,7 +287,7 @@ class PlaneRecNet(nn.Module):
             mask = seg_masks[i].squeeze()
             ys, xs = torch.where(mask)
             pred_boxes[i] = torch.tensor([xs.min(), ys.min(), xs.max(), ys.max()]).float()
-        result['pred_boxes'] = pred_boxes     
+        result['pred_boxes'] = pred_boxes
 
         return result
 
@@ -299,22 +302,22 @@ class SOLOv2InsHead(nn.Module):
         self.num_classes = cfg.num_classes
         self.num_kernels = cfg.solov2.num_kernels
         self.num_grids = cfg.solov2.num_grids
-        self.instance_in_features = cfg.solov2.instance_in_features 
-        self.instance_strides = cfg.solov2.fpn_instance_strides 
+        self.instance_in_features = cfg.solov2.instance_in_features
+        self.instance_strides = cfg.solov2.fpn_instance_strides
         self.instance_in_channels = cfg.fpn.num_features
-        self.instance_channels = cfg.solov2.instance_channels 
-        self.num_levels = len(self.instance_in_features) 
+        self.instance_channels = cfg.solov2.instance_channels
+        self.num_levels = len(self.instance_in_features)
         assert self.num_levels == len(self.instance_strides), \
             print("Strides should match the features.")
         assert len(set(in_channels)) == 1, \
             print("Each level must have the same channel!")
-        
-        head_configs = {"cate": (cfg.solov2.num_instance_convs, 
-                                 cfg.solov2.use_dcn_in_instance, 
+
+        head_configs = {"cate": (cfg.solov2.num_instance_convs,
+                                 cfg.solov2.use_dcn_in_instance,
                                  False),
                         "kernel": (cfg.solov2.num_instance_convs,
-                                   cfg.solov2.use_dcn_in_instance, 
-                                   cfg.solov2.use_coord_conv) 
+                                   cfg.solov2.use_dcn_in_instance,
+                                   cfg.solov2.use_coord_conv)
                         }
 
         norm = None if cfg.solov2.norm == "none" else cfg.solov2.norm
@@ -333,9 +336,9 @@ class SOLOv2InsHead(nn.Module):
                     chn = self.instance_channels
 
                 tower.append(conv_func(
-                        chn, self.instance_channels,
-                        kernel_size=3, stride=1,
-                        padding=1, bias=norm is None
+                    chn, self.instance_channels,
+                    kernel_size=3, stride=1,
+                    padding=1, bias=norm is None
                 ))
                 if norm == "GN":
                     tower.append(nn.GroupNorm(32, self.instance_channels))
@@ -384,7 +387,7 @@ class SOLOv2InsHead(nn.Module):
             # kernel
             kernel_feat = self.kernel_tower(kernel_feat)
             kernel_pred.append(self.kernel_pred(kernel_feat))
-            
+
             # cate
             cate_feat = self.cate_tower(cate_feat)
             cate_pred.append(self.cate_pred(cate_feat))
@@ -490,7 +493,7 @@ class SOLOv2MaskHead(nn.Module):
                 mask_feat = torch.cat([mask_feat, coord_feat], 1)
             # add for top features.
             # feature_add_all_level += self.convs_all_levels[i](mask_feat)  # This inplace operation may cause RuntimeError for pytorch >= 1.10
-            feature_add_all_level = feature_add_all_level.clone() + self.convs_all_levels[i](mask_feat) 
+            feature_add_all_level = feature_add_all_level.clone() + self.convs_all_levels[i](mask_feat)
 
         mask_pred = self.conv_pred(feature_add_all_level)
         return mask_pred
@@ -505,12 +508,12 @@ class DepthDecoder_FPN(nn.Module):
         self.num_kernels = cfg.solov2.num_kernels
         self.channels_kernels_flatten = 0
         for i in cfg.solov2.num_grids:
-            self.channels_kernels_flatten += i*i
+            self.channels_kernels_flatten += i * i
 
         self.latlayer1 = nn.Conv2d(2048, 256, kernel_size=1, stride=1, padding=0)
         self.latlayer2 = nn.Conv2d(1024, 256, kernel_size=1, stride=1, padding=0)
-        self.latlayer3 = nn.Conv2d( 512, 256, kernel_size=1, stride=1, padding=0)
-        self.latlayer4 = nn.Conv2d( 256, 256, kernel_size=1, stride=1, padding=0)
+        self.latlayer3 = nn.Conv2d(512, 256, kernel_size=1, stride=1, padding=0)
+        self.latlayer4 = nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0)
 
         self.conv1 = nn.Sequential(
             nn.ReflectionPad2d(1),
@@ -565,16 +568,16 @@ class DepthDecoder_FPN(nn.Module):
             nn.BatchNorm2d(64, eps=0.001, momentum=0.01),
             nn.ReLU(inplace=True)
         )
-        
+
         self.depth_pred = nn.Sequential(
             nn.ReflectionPad2d(1),
             nn.Conv2d(64, self.num_output_channels, kernel_size=3, stride=1, padding=0),
             nn.Softplus()
         )
-        
+
         self.conv1x1 = nn.Sequential(
             nn.Conv2d(self.channels_kernels_flatten, 256, kernel_size=1, stride=1, padding=0)
-            )
+        )
 
         self.refine_conv = nn.Sequential(
             nn.ReflectionPad2d(1),
@@ -586,17 +589,21 @@ class DepthDecoder_FPN(nn.Module):
     def forward(self, feature_maps, seg_preds, kernel_preds):
         num_ins_levels = len(kernel_preds)
         B = feature_maps[0].shape[0]
-        flatten_kernel = torch.cat([kernel_preds[i].permute(0, 2, 3, 1).view(B, -1, self.num_kernels) for i in range(num_ins_levels)], dim=1).detach()
+        flatten_kernel = torch.cat(
+            [kernel_preds[i].permute(0, 2, 3, 1).view(B, -1, self.num_kernels) for i in range(num_ins_levels)],
+            dim=1).detach()
         _, N, I = flatten_kernel.shape
         flatten_kernel = flatten_kernel.view(-1, N, I, 1, 1)
-        mask_preds = torch.cat([F.conv2d(seg_preds[img_idx].unsqueeze(0).detach(), flatten_kernel[img_idx], stride=1) for img_idx in range(B)], dim=0).sigmoid().detach()
+        mask_preds = torch.cat(
+            [F.conv2d(seg_preds[img_idx].unsqueeze(0).detach(), flatten_kernel[img_idx], stride=1) for img_idx in
+             range(B)], dim=0).sigmoid().detach()
         mask_preds = self.conv1x1(mask_preds)
-        mask_preds = F.interpolate(mask_preds, scale_factor=0.25, mode='bilinear', align_corners=False, recompute_scale_factor=False)
+        mask_preds = F.interpolate(mask_preds, scale_factor=0.25, mode='bilinear', align_corners=False,
+                                   recompute_scale_factor=False)
         feats = list(reversed(feature_maps))
-        
-        
+
         x = self.deconv1(self.conv1(self.latlayer1(feats[0])))
-        
+
         x = self.refine_conv(torch.cat([x, torch.mul(x, mask_preds)], dim=1))
 
         x = self.deconv2(torch.cat([self.conv2(self.latlayer2(feats[1])), x], dim=1))
@@ -609,6 +616,8 @@ class DepthDecoder_FPN(nn.Module):
 
 if __name__ == "__main__":
     import argparse
+
+
     def parse_args(argv=None):
         parser = argparse.ArgumentParser(description="For PlaneRecNet Debugging and Inference Time Measurement")
         parser.add_argument(
@@ -618,20 +627,20 @@ if __name__ == "__main__":
             help='Trained state_dict file path to open. If "interrupt", this will open the interrupt file.',
         )
         parser.add_argument(
-            "--config", 
-            default="PlaneRecNet_50_config", 
+            "--config",
+            default="PlaneRecNet_50_config",
             help="The config object to use.")
         parser.add_argument(
-            "--fps", 
-            action="store_true", 
+            "--fps",
+            action="store_true",
             help="Testing running speed.")
         global args
         args = parser.parse_args(argv)
-    
+
 
     parse_args()
-    from data.config import set_cfg
-    from utils.utils import MovingAverage, init_console
+    from planerecnet.data import set_cfg
+    from planerecnet.utils.utils import MovingAverage, init_console
 
     init_console()
 
@@ -642,14 +651,13 @@ if __name__ == "__main__":
     else:
         net.init_weights(backbone_path="weights/" + cfg.backbone.path)
         print(cfg.backbone.name)
-        
+
     net.eval()
     net = net.cuda()
     torch.set_default_tensor_type("torch.cuda.FloatTensor")
     frame = torch.from_numpy(cv2.imread("data/example_nyu.jpg", cv2.IMREAD_COLOR)).cuda().float()
     batch = FastBaseTransform()(frame.unsqueeze(0))
     y = net(batch)
-    
 
     starter, ender = (
         torch.cuda.Event(enable_timing=True),

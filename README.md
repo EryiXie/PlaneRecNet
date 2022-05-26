@@ -1,6 +1,6 @@
 # PlaneRecNet
 This is an official implementation for PlaneRecNet: A multi-task convolutional neural network provides instance segmentation for piece-wise planes and monocular depth estimation, and focus on the cross-task consistency between two branches.
-![Network Architecture](/data/network_architecture.png)
+![Network Architecture](/planerecnet/data/network_architecture.png)
 ## Changing Logs
 22th. Oct. 2021: Initial update, some trained models and data annotation will be uploaded very soon.
 
@@ -28,7 +28,7 @@ cd PlaneRecNet
 ## Download trained model:
 Here are our models (released on Oct 22th, 2021), which can reproduce the results in the [paper](https://arxiv.org/abs/2110.11219):
 
-![Quantitative Results](/data/prn_results_table.png)
+![Quantitative Results](/planerecnet/data/prn_results_table.png)
 
 All models below are trained with batch_size=8 and a single RTX3090 or a single RTXA6000 on the [plane annotation](https://github.com/NVlabs/planercnn) for [ScanNet](http://www.scan-net.org/) dataset:
 
@@ -57,7 +57,7 @@ python3 simple_inference.py --config=PlaneRecNet_101_config --trained_model=weig
 
 Then you will get segmentation and depth estimation results like these:
 
-![Qualititative Results](/data/prn_results_vis.png)
+![Qualititative Results](/planerecnet/data/prn_results_vis.png)
 
 
 # Training

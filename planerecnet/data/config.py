@@ -3,8 +3,7 @@
     Licensed under The MIT License [see LICENSE for details]
 """
 
-from models.backbone import ResNetBackbone
-import torch
+from planerecnet.models.backbone import ResNetBackbone
 
 COLORS = (
     (244, 67, 54),
@@ -28,13 +27,13 @@ COLORS = (
     (96, 125, 139),
 )
 
-
 # These are in BGR and are for ImageNet
 MEANS = (103.94, 116.78, 123.68)
 STD = (57.38, 57.12, 58.40)
 
 PLANE_CLASSES = ('plane',)
 PLANE_LABEL_MAP = {1: 1}
+
 
 # ----------------------- CONFIG CLASS ----------------------- #
 
@@ -80,6 +79,7 @@ class Config(object):
         for k, v in vars(self).items():
             print(k, ' = ', v)
 
+
 # ----------------------- DATASETS ----------------------- #
 
 dataset_base = Config({
@@ -87,11 +87,11 @@ dataset_base = Config({
 
     # Training images and annotations
     'train_images': '',
-    'train_info':   '',
+    'train_info': '',
 
     # Validation images and annotations.
     'valid_images': '',
-    'valid_info':   '',
+    'valid_info': '',
 
     # Whether or not to load GT. If this is False, eval.py quantitative evaluation won't work.
     'has_gt': True,
@@ -99,14 +99,14 @@ dataset_base = Config({
 
     # A list of names for each of you classes.
     'class_names': PLANE_CLASSES,
-    'label_map':  PLANE_LABEL_MAP,
+    'label_map': PLANE_LABEL_MAP,
 
     # The ratio to convert depth pixel value to meter
     'depth_resolution': None,
-    'min_depth':  None,
-    'max_depth':  None,
+    'min_depth': None,
+    'max_depth': None,
     # Resize scale factor
-    'scale_factor':  None,
+    'scale_factor': None,
 })
 
 scannet_dataset = dataset_base.copy({
@@ -114,23 +114,23 @@ scannet_dataset = dataset_base.copy({
 
     # Training images and annotations
     'train_images': './scannet/scans/',
-    'train_info':   './scannet/scannet_train.json',
+    'train_info': './scannet/scannet_train.json',
 
     # Validation images and annotations.
     'valid_images': './scannet/scans/',
-    'valid_info':   './scannet/scannet_val.json',
+    'valid_info': './scannet/scannet_val.json',
 
     # Evaluation images and annotations.
     'eval_images': './scannet/scans/',
-    'eval_info':   './scannet/scannet_eval.json',
+    'eval_info': './scannet/scannet_eval.json',
 
     # A list of names for each of you classes.
     'class_names': PLANE_CLASSES,
-    'label_map':  PLANE_LABEL_MAP,
+    'label_map': PLANE_LABEL_MAP,
 
     # The ratio to convert depth pixel value to meter
-    'depth_resolution': 1/1000,
-    'min_depth': 1/1000,
+    'depth_resolution': 1 / 1000,
+    'min_depth': 1 / 1000,
     'max_depth': 40,
     # Scale factor to resize the camera intrinsic matrix for project predicted depth to point cloud
     'scale_factor': 1,
@@ -144,29 +144,29 @@ nyu_eval = dataset_base.copy({
     'eval_info': './NYU/nyu_eval.json',
     # Resize scale factor
     'scale_factor': 1,
-    'min_depth': 1/1000,
+    'min_depth': 1 / 1000,
     'max_depth': 40,
     'has_pos': False,
     'depth_resolution': 1 / 65535.0 * 9.99547
 })
 
 S2D3DS_dataset = dataset_base.copy({
-# Training on Stanford 2D-3D-S dataset may also gives you some nice results, since the depth ground truth has high quality.
-# But I labeled the piece-wise plane segmentation a very long times ago as a student, and I lost the back-traceability because I very uncarefully renamed all images.
-# So I would like not to make the annotation files available, I am so sorry for that.
+    # Training on Stanford 2D-3D-S dataset may also gives you some nice results, since the depth ground truth has high quality.
+    # But I labeled the piece-wise plane segmentation a very long times ago as a student, and I lost the back-traceability because I very uncarefully renamed all images.
+    # So I would like not to make the annotation files available, I am so sorry for that.
     'name': 'S2D3DSDataset',
 
     # Training images and annotations
     'train_images': './S2D3DS/images/',
-    'train_info':   './S2D3DS/s2d3ds_train.json',
+    'train_info': './S2D3DS/s2d3ds_train.json',
 
     # Validation images and annotations.
     'valid_images': './S2D3DS/images_val/',
-    'valid_info':   './S2D3DS/s2d3ds_val.json',
+    'valid_info': './S2D3DS/s2d3ds_val.json',
 
     # The ratio to convert depth pixel value to meter
-    'depth_resolution': 1/512,
-    'min_depth': 1/512,
+    'depth_resolution': 1 / 512,
+    'min_depth': 1 / 512,
     'max_depth': 40,
     # Resize scale factor
     'scale_factor': 0.5,
@@ -176,18 +176,18 @@ S2D3DS_dataset = dataset_base.copy({
 
 data_augment = Config(
     {
-    # Randomize hue, vibrance, etc.
-    'photometric_distort': True,
-    # Mirror the image with a probability of 1/2
-    'random_mirror': True,
-    # Flip the image vertically with a probability of 1/2
-    'random_flip': True,
-    # With uniform probability, rotate the image [0,90,180,270] degrees, if the input image is not square, you need some modification.
-    'random_rot90': False,
-    # With mothin blur, no need if you train on ScanNet, ScanNet is already blurrrrrred...
-    'motion_blur': False,
-    # With Gaussian nosie
-    'gaussian_noise': False,
+        # Randomize hue, vibrance, etc.
+        'photometric_distort': True,
+        # Mirror the image with a probability of 1/2
+        'random_mirror': True,
+        # Flip the image vertically with a probability of 1/2
+        'random_flip': True,
+        # With uniform probability, rotate the image [0,90,180,270] degrees, if the input image is not square, you need some modification.
+        'random_rot90': False,
+        # With mothin blur, no need if you train on ScanNet, ScanNet is already blurrrrrred...
+        'motion_blur': False,
+        # With Gaussian nosie
+        'gaussian_noise': False,
     }
 )
 
@@ -201,7 +201,6 @@ resnet_transform = Config(
         'to_float': False,
     }
 )
-
 
 # ----------------------- BACKBONES ----------------------- #
 
@@ -262,7 +261,7 @@ fpn_base = Config(
         # The upsampling mode used
         'interpolation_mode': 'bilinear',
         # High level mode to use 'retina' or 'orginal' or None
-        'high_level_mode' : None,
+        'high_level_mode': None,
         # Whether to add relu to the regular layers
         'relu_pred_layers': True,
     }
@@ -299,7 +298,7 @@ solov2_base = Config(
         # Instance input features
         'instance_in_features': ['p2', 'p3', 'p4', 'p5', 'p6'],
         # The numbers of instance channels
-        'instance_channels': 512, # which should can be decrease?
+        'instance_channels': 512,  # which should can be decrease?
         # FPN instance strides
         'fpn_instance_strides': [8, 8, 16, 32, 32],
         # FPN scale ranges, as the author of solo said 
@@ -313,7 +312,7 @@ solov2_base = Config(
         'use_dcn_in_instance': False,
         # Define the instance center location box with 0.5 * width(or heigth) * sigma
         'sigma': 0.2,
-        
+
         ### Matrix NMS Settings
         # Maximum number of priors before NMS
         'nms_pre': 500,
@@ -336,14 +335,14 @@ solov2_base = Config(
         # Whether use coord conv
         'use_coord_conv': True,
         # Type of norm method to use
-        'norm' : 'GN',
+        'norm': 'GN',
         # Pi bias for stable focal loss at beginning 
         'focal_loss_init_pi': 0.01,
     }
 )
 
 solov2_light = Config(
-# We use the light version of solov2, it turned out to be better than the base setting. I did the research, trust me.
+    # We use the light version of solov2, it turned out to be better than the base setting. I did the research, trust me.
     {
         ### Maks Head Settings
         # The number of prediction kernels
@@ -359,7 +358,7 @@ solov2_light = Config(
         # Instance input features
         'instance_in_features': ['p2', 'p3', 'p4', 'p5'],
         # The numbers of instance channels
-        'instance_channels': 256, # which should can be decrease?
+        'instance_channels': 256,  # which should can be decrease?
         # FPN instance strides
         'fpn_instance_strides': [8, 8, 16, 32],
         # FPN scale ranges, as the author of solo said 
@@ -373,7 +372,7 @@ solov2_light = Config(
         'use_dcn_in_instance': False,
         # Define the instance center location box with 0.5 * width(or heigth) * sigma
         'sigma': 0.2,
-        
+
         ### Matrix NMS Settings
         # Maximum number of priors before NMS
         'nms_pre': 500,
@@ -396,7 +395,7 @@ solov2_light = Config(
         # Whether use coord conv
         'use_coord_conv': True,
         # Type of norm method to use
-        'norm' : 'GN',
+        'norm': 'GN',
         # Pi bias for stable focal loss at beginning 
         'focal_loss_init_pi': 0.01,
     }
@@ -408,13 +407,13 @@ PlaneRecNet_base_config = Config(
     {
         'name': 'PlaneRecNet_base',
 
-         # Dataset Settings
+        # Dataset Settings
         'dataset': scannet_dataset,
         'num_classes': len(scannet_dataset.class_names) + 1,
 
         # Data Augmentations
         'augment': data_augment,
-        
+
         # Training Settings
         'max_iter': 125000,
         'lr_steps': (62500, 100000),
@@ -445,7 +444,7 @@ PlaneRecNet_base_config = Config(
         'fpn': fpn_base.copy(
             {
                 'start_level': 0,
-                'high_level_mode' : 'original',
+                'high_level_mode': 'original',
             }
         ),
 
@@ -497,7 +496,7 @@ PlaneRecNet_101_config = PlaneRecNet_base_config.copy(
         'fpn': fpn_base.copy(
             {
                 'start_level': 0,
-                'high_level_mode' : None,
+                'high_level_mode': None,
             }
         ),
 
@@ -530,6 +529,7 @@ PlaneRecNet_50_config = PlaneRecNet_101_config.copy(
 # Default config
 cfg = PlaneRecNet_base_config.copy()
 
+
 def set_cfg(config_name: str):
     ''' Sets the active config. Works even if cfg is already imported! '''
     global cfg
@@ -546,7 +546,6 @@ def set_dataset(dataset_name: str):
 
 
 # Just for Testing
-if __name__ == "__main__" :
+if __name__ == "__main__":
     set_cfg('PlaneRecNet_50_config')
     cfg.print()
-
